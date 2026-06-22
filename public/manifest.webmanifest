@@ -1,0 +1,10 @@
+{
+  "name": "Mobile Shop POS",
+  "short_name": "Mobile Shop",
+  "description": "POS and inventory management for mobile phone shops",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary"
+}

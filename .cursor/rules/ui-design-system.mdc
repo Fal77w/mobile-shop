@@ -1,0 +1,184 @@
+---
+alwaysApply: true
+---
+
+# moblies-shop — UI/UX Design System
+
+**Last updated:** 2026-06-21  
+**Scope:** Frontend only — no backend/API/server action changes.
+
+---
+
+## Typography
+
+### What changed
+- Replaced Geist fonts with **Inter** (Latin) + **IBM Plex Sans Arabic** (Arabic).
+- RTL body uses Arabic font first; LTR uses Inter first.
+
+### Where applied
+- `app/layout.tsx` — font loading via `next/font/google`
+- `app/globals.css` — `--font-sans` token chain
+
+### Why / impact
+- Professional SaaS readability in both Arabic and English.
+- IBM Plex Sans Arabic is a high-quality Arabic UI font with proper glyph support.
+
+---
+
+## Color System (SaaS Neutral Palette)
+
+### What changed
+- Primary: indigo `#4f46e5` (light) / `#818cf8` (dark) — Stripe/Shopify admin feel.
+- Semantic tokens: `--success`, `--warning`, `--destructive` with tinted badge backgrounds.
+- Subtle borders: `border-border/60` for reduced visual noise.
+
+### Where applied
+- `app/globals.css` — CSS custom properties
+- `components/ui/badge.tsx` — semantic color variants
+- `components/dashboard/stat-card.tsx` — accent icon backgrounds
+
+---
+
+## Spacing & Layout Shell
+
+### What changed
+- `--sidebar-width: 16.5rem`, `--header-height: 3.75rem`
+- `.app-shell-main` — subtle indigo radial gradient background
+- `.page-container` — max-width 1400px centered content
+- Sticky header with backdrop blur
+
+### Where applied
+- `app/(dashboard)/layout.tsx`
+- `components/layout/sidebar.tsx` — Header component
+
+### Impact
+- Cleaner dashboard hierarchy; content doesn't stretch edge-to-edge on wide screens.
+
+---
+
+## Navigation UX
+
+### What changed
+- Sidebar grouped into: Main, Inventory, Operations, Analytics, Administration.
+- Active nav item: primary fill + shadow.
+- Header shows user name + role badge.
+- Mobile bottom nav: icon pill highlight on active tab.
+- Language switcher: segmented pill toggle (AR / EN).
+
+### Where applied
+- `components/layout/nav-config.ts` — `NavGroup`, `getGroupedNavItems()`
+- `components/layout/sidebar.tsx`
+- `components/layout/mobile-bottom-nav.tsx`
+- `components/layout/language-switcher.tsx`
+- `messages/ar.json`, `messages/en.json` — `nav.groups.*`
+
+### Impact
+- Reduced cognitive load; faster wayfinding for 15+ routes.
+
+---
+
+## UI Primitives (components/ui/)
+
+### Button (`button.tsx`)
+- Rounded-lg, shadow-sm on primary, `loading` prop with spinner, active scale feedback.
+
+### Card (`card.tsx`)
+- rounded-xl, softer border, added `CardFooter`.
+
+### Table (`table.tsx`)
+- Muted header row, uppercase column labels, `text-start` for RTL, tighter row padding.
+- Removed outer scroll wrapper — use `DataTableShell` instead.
+
+### Dialog (`dialog.tsx`)
+- Backdrop blur, rounded-xl, text-start headers, logical `end-*` close button.
+
+### Tabs (`tabs.tsx`)
+- Pill-style list with rounded-xl container, active tab shadow.
+
+### Badge (`badge.tsx`)
+- Rounded-md, tinted semantic colors via CSS vars (not hardcoded emerald/amber).
+
+### Input (`input.tsx`)
+- rounded-lg, ring-offset focus (unchanged pattern, consistent with tokens).
+
+### Label (`label.tsx`)
+- Explicit foreground color for contrast.
+
+---
+
+## New Reusable Components
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| `DataTableShell` | `components/ui/data-table-shell.tsx` | Bordered table container + optional footer count |
+| `FormSection` | `components/ui/form-section.tsx` | Grouped form fields with title + grid columns |
+| `FormField` | `components/ui/form-section.tsx` | Label + field wrapper |
+| `LoadingSpinner` | `components/ui/loading-spinner.tsx` | Inline/page loading indicator |
+| `EmptyState` | `components/ui/empty-state.tsx` | Dashed empty state with icon + action slot |
+
+### Usage pattern for list pages
+```tsx
+<DataTableShell footer={`${items.length} items`}>
+  <Table>...</Table>
+</DataTableShell>
+```
+
+---
+
+## Page-Level Improvements
+
+### Dashboard (`app/(dashboard)/dashboard/page.tsx`)
+- Stat cards with colored icon accents.
+- EmptyState for no recent sales / low stock.
+- Quick links to POS and products.
+
+### Products (`app/(dashboard)/inventory/products/page.tsx`)
+- DataTableShell wrapper, EmptyState when no products, tabular-nums for prices.
+
+### Login (`app/(auth)/login/login-client.tsx`)
+- Brand icon, gradient background, pill language switcher, loading button.
+
+### Reports date filter (`reports/reports-date-filter.tsx`)
+- Card-wrapped filter form with labeled inputs.
+
+### Customers / Stock movements
+- DataTableShell + EmptyState on customers and movements pages.
+- Movements filter uses Card + Input + Button (consistent with reports filter).
+
+---
+
+### What changed
+- Position: top-center (desktop + mobile).
+- closeButton enabled, rounded-xl toast styling.
+
+### Where
+- `components/app-toaster.tsx`
+
+---
+
+## RTL / LTR Rules
+
+1. Use **logical properties**: `ms-*`, `me-*`, `ps-*`, `pe-*`, `start-*`, `end-*`, `text-start`, `text-end`.
+2. Never use `text-left` / `text-right` on table headers — use `text-start`.
+3. Directional icons (chevrons, arrows): add `rtl-flip` class when needed.
+4. Arabic headings: no negative letter-spacing (`[dir="rtl"] h1-h4 { letter-spacing: 0 }`).
+
+---
+
+## Do NOT (UI layer)
+
+- Do NOT change Prisma schema, server actions, API routes, or business services for UI tasks.
+- Do NOT remove `touch-manipulation` or 16px mobile input rule.
+- Do NOT use hardcoded English in components — use next-intl.
+- Do NOT use `text-left`/`margin-left` — use logical equivalents.
+
+---
+
+## When Adding New UI
+
+1. Reuse tokens from `globals.css` — no one-off hex colors.
+2. Wrap data tables in `DataTableShell`.
+3. Use `EmptyState` for zero-result views.
+4. Use `PageHeader` for all dashboard page titles.
+5. Use `Button loading={pending}` for async actions.
+6. **Update this file** with what/why/where/impact.
