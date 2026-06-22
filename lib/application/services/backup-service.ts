@@ -20,6 +20,7 @@ export async function exportBackup() {
     stockTransfers,
     stockMovements,
     repairOrders,
+    programmingOrders,
     invoiceSequences,
   ] = await Promise.all([
     prisma.shopSettings.findMany(),
@@ -37,6 +38,7 @@ export async function exportBackup() {
     prisma.stockTransfer.findMany(),
     prisma.stockMovement.findMany(),
     prisma.repairOrder.findMany(),
+    prisma.programmingOrder.findMany(),
     prisma.invoiceSequence.findMany(),
   ]);
 
@@ -60,6 +62,7 @@ export async function exportBackup() {
       stockTransfers,
       stockMovements,
       repairOrders,
+      programmingOrders,
       invoiceSequences,
     },
   };
@@ -85,13 +88,32 @@ export async function restoreBackup(payload: unknown) {
     await tx.stockMovement.deleteMany();
     await tx.stockTransfer.deleteMany();
     await tx.repairOrder.deleteMany();
+    await tx.programmingOrder.deleteMany();
     await tx.product.deleteMany();
     await tx.customer.deleteMany();
     await tx.invoiceSequence.deleteMany();
+    // Must clear categories/warehouses before restore — upsert by id fails when
+    // existing rows share the same name but different ids (unique on warehouse.name).
+    await tx.category.deleteMany();
+    await tx.warehouse.deleteMany();
 
-    for (const row of data.shopSettings ?? []) await tx.shopSettings.upsert({ where: { id: (row as { id: string }).id }, create: row as never, update: row as never });
-    for (const row of data.warehouses ?? []) await tx.warehouse.upsert({ where: { id: (row as { id: string }).id }, create: row as never, update: row as never });
-    for (const row of data.categories ?? []) await tx.category.upsert({ where: { id: (row as { id: string }).id }, create: row as never, update: row as never });
+    for (const row of data.shopSettings ?? []) {
+      await tx.shopSettings.upsert({
+        where: { id: (row as { id: string }).id },
+        create: row as never,
+        update: row as never,
+      });
+    }
+    for (const row of data.warehouses ?? []) {
+      await tx.warehouse.create({ data: row as never });
+    }
+
+    const categories = (data.categories ?? []) as { id: string; parentId: string | null }[];
+    const roots = categories.filter((c) => !c.parentId);
+    const children = categories.filter((c) => c.parentId);
+    for (const row of roots) await tx.category.create({ data: row as never });
+    for (const row of children) await tx.category.create({ data: row as never });
+
     for (const row of data.products ?? []) await tx.product.create({ data: row as never });
     for (const row of data.customers ?? []) await tx.customer.create({ data: row as never });
     for (const row of data.expenses ?? []) await tx.expense.create({ data: row as never });
@@ -109,6 +131,7 @@ export async function restoreBackup(payload: unknown) {
     for (const row of data.stockTransfers ?? []) await tx.stockTransfer.create({ data: row as never });
     for (const row of data.stockMovements ?? []) await tx.stockMovement.create({ data: row as never });
     for (const row of data.repairOrders ?? []) await tx.repairOrder.create({ data: row as never });
+    for (const row of data.programmingOrders ?? []) await tx.programmingOrder.create({ data: row as never });
   });
 }
 
