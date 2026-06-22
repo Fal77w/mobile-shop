@@ -2,7 +2,13 @@
 alwaysApply: true
 ---
 
-Always follow these rules for moblies-shop:
+# moblies-shop — Project Rules
+
+**Last updated:** 2026-06-22
+
+Always follow these rules for moblies-shop.
+
+---
 
 ## Tech Stack
 
@@ -12,122 +18,218 @@ Always follow these rules for moblies-shop:
 - Auth.js Credentials + JWT session + bcryptjs (12 rounds)
 - Tailwind CSS 4 + Radix UI (Shadcn-style in `components/ui/`)
 - next-intl — Arabic (default, RTL) + English
-- @react-pdf/renderer for A4 invoices
+- @react-pdf/renderer for A4 invoices (Noto Sans Arabic font)
 - Vitest for unit tests
 - Zod validation in `lib/validations/`
 
+---
+
 ## Architecture
 
-- **Single shop per deployment** — NOT multi-tenant (unlike StoreLedger)
+- **Single shop per deployment** — NOT multi-tenant
 - Clean Architecture:
   - `lib/domain/` — errors, profit helpers, types
-  - `lib/application/services/` — business logic (inventory, sale, purchase, report...)
+  - `lib/application/services/` — business logic
   - `app/(dashboard)/*/actions.ts` — thin server actions
-- No separate backend server — monolith Next.js
-- Server actions for all mutations; minimal API routes (auth, search, invoice PDF)
-- Action results: `{ success: true; id?: string } | { error: string }` via `lib/domain/action-result.ts`
-- Server actions passed to client components must use `.bind(null, id)` — never inline arrow functions from RSC
+- Monolith Next.js — no separate backend
+- Server actions for mutations; API routes for auth, invoice PDF, backup, search
+- Action results: `{ success: true; id?: string } | { error: string }`
+- Server actions to client: use `.bind(null, id)` — never inline arrow from RSC
+
+---
 
 ## Auth & Roles
 
-- Roles: `ADMIN` | `EMPLOYEE` on `User.role`
-- JWT session includes: id, email, name, locale, role
+### Prisma enum `Role`
+`ADMIN` | `ACCOUNTANT` | `SALES` | `EMPLOYEE` (legacy → treated as SALES)
+
+### Normalized roles (`lib/permissions.ts`)
+| Role | Access |
+|------|--------|
+| **ADMIN** | Full access + users + settings + backup + profit reports |
+| **ACCOUNTANT** | + purchases + expenses + cost price edit + financial reports |
+| **SALES** / **EMPLOYEE** | POS, sales, inventory (no cost price), customers, repairs, programming, basic reports |
+
+### Session helpers
 - `requireUser()` — all authenticated routes
-- `requireAdmin()` — `/users`, `/settings`, and their server actions
-- Middleware blocks Employee from `/users` and `/settings`
-- Bootstrap admin from `.env`: `ADMIN_EMAIL`, `ADMIN_PASSWORD` (min 6 chars), `ADMIN_NAME`, `ADMIN_LOCALE`
+- `requireAdmin()` — `/users`, `/settings`
+- `requireAccountantOrAdmin()` — `/purchases`, `/expenses`
+
+### Middleware (`middleware.ts`)
+- Admin only: `/users`, `/settings`
+- Accountant or Admin: `/purchases`, `/expenses`
+
+### Bootstrap admin from `.env`
+`ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`, `ADMIN_LOCALE`
+
+---
 
 ## Database (Prisma)
 
+### Key models
+User, ShopSettings, Warehouse, Category, Product, Sale, SaleItem, Purchase, PurchaseItem, SaleReturn, PurchaseReturn, Expense, Customer, Payment, StockTransfer, StockMovement, RepairOrder, ProgrammingOrder, InvoiceSequence
+
+### ShopSettings fields
+`shopName`, `phone`, `address`, `invoicePrefix`, `logoUrl`, `invoiceFooter`, `invoiceShowBarcode`
+
+### Rules
 - Money: `Decimal @db.Decimal(12, 2)` — never Float
 - IDs: `cuid()`
-- Business dates: `@db.Date`; timestamps: `DateTime`
-- Key models: User, ShopSettings, Warehouse, Category, Product, Sale, SaleItem, Purchase, PurchaseItem, SaleReturn, PurchaseReturn, Expense, Customer, Payment, StockTransfer, InvoiceSequence
-- Use `prisma migrate deploy` in Docker via `scripts/docker-init.sh`
-- Indexes on foreign keys and search fields (sku, barcode, name)
+- Business dates: `@db.Date`
+- Migrations: `prisma migrate deploy` in Docker via `scripts/docker-init.sh`
 
-## Inventory & Stock Rules
+---
+
+## Inventory & Stock
 
 - **All stock changes MUST use `prisma.$transaction`**
-- Sale → decrease `Product.quantity` (reject if insufficient)
-- Purchase → increase quantity + update costPrice
-- SaleReturn → increase quantity; reduce debt if ON_ACCOUNT sale
-- PurchaseReturn → decrease quantity (reject if insufficient)
-- StockTransfer → decrease source, increase/create in destination (match by SKU + warehouseId)
-- SaleItem stores `costPriceSnapshot` at sale time for accurate profit reports
-- Invoice numbers via `InvoiceSequence` + `ShopSettings.invoicePrefix`
+- Sale → decrease qty + log `StockMovement` type `SALE`
+- Purchase → increase qty (movement log optional in service)
+- Returns → adjust stock + movements
+- StockTransfer → TRANSFER_OUT / TRANSFER_IN
+- SaleItem stores `costPriceSnapshot` for profit reports
+- **Auto SKU:** leave empty on create → `generateUniqueSku()` in `inventory-service.ts`
+
+---
+
+## POS & Sales
+
+### POS (`/pos`)
+- Product grid + category tabs + search
+- Categories from `Product.category.name` (in-stock products only)
+- Arabic category labels: `messages/*/pos.categoryNames`
+- Payment: CASH | CARD | ON_ACCOUNT (requires customer)
+- On complete → redirect to `/pos/sales/[id]` (invoice + print)
+
+### Sales list (`/sales`)
+- Date filter (from/to), today/this week shortcuts
+- Shows invoice, customer, line items (name × qty × price), payment, employee
+- Links to invoice detail and PDF print
+
+---
+
+## Repairs & Programming
+
+| Module | Path | Model |
+|--------|------|-------|
+| Repairs | `/repairs` | `RepairOrder` |
+| Programming | `/programming` | `ProgrammingOrder` |
+
+Both: form + table + status workflow (NEW → IN_PROGRESS → READY → DELIVERED).
+
+Programming orders are **separate** from selling Programming-category products via POS.
+
+---
+
+## Branding
+
+- **Shop name** from `ShopSettings.shopName` — passed to Sidebar/Header via dashboard layout
+- **Logo** uploaded to `public/uploads/` (gitignored except `.gitkeep`)
+- **Invoice PDF** uses shop settings + Noto Sans Arabic (`lib/pdf/register-fonts.ts`)
+- Do NOT hardcode shop name in sidebar — read from settings
+
+---
+
+## Money Display
+
+`formatMoney()` in `lib/utils.ts`:
+- No trailing `.00` for whole numbers
+- Latin digits (`numberingSystem: "latn"`)
+- Use everywhere in UI; PDF uses same helper
+
+---
 
 ## Profit Formulas
 
 ```
-GrossProfit = Σ(saleItems: (unitPrice - costPriceSnapshot) × qty) − return margins
+GrossProfit = Σ(saleItems: (unitPrice - costPriceSnapshot) × qty) − returns
 NetProfit   = GrossProfit − Σ(expenses)
 ```
 
-Implemented in `lib/domain/profit.ts` and `lib/application/services/report-service.ts`
+`lib/domain/profit.ts`, `lib/application/services/report-service.ts`
 
-## Financial / Business Rules
-
-- Payment methods: CASH, CARD, ON_ACCOUNT
-- ON_ACCOUNT sale requires customer → increases `Customer.totalDebt`
-- Customer payment decreases `totalDebt` (cannot exceed debt)
-- Invoice PDF shows selling price only — NEVER cost price
-- Expenses reduce net profit in reports
+---
 
 ## Production & Docker
 
 - Services: `postgres` → `migrate` → `app` (+ optional `seed` profile)
-- `POSTGRES_DB=mobiles_shop`, `APP_PORT=3022` (default)
-- `AUTH_URL` must match public URL (e.g. `http://localhost:3022`)
-- `AUTH_SECRET` must be strong: `openssl rand -base64 32`
-- On empty DB: `scripts/docker-init.sh` → migrate + `prisma/bootstrap.ts`
-- Bootstrap creates: admin user, shop settings, 2 warehouses, 5 default categories
-- Demo data is opt-in: `docker compose --profile demo run --rm seed` or `npm run db:seed`
-- **`public/` directory MUST exist** — Docker COPY fails without it
-- Fresh start: `docker compose down -v` then `docker compose up -d --build`
-- Do not commit `.env`; use `.env.example` as template
+- `APP_PORT=3022`, `AUTH_URL` must match public URL
+- `AUTH_SECRET`: `openssl rand -base64 32`
+- Bootstrap: `scripts/docker-init.sh` → migrate + `prisma/bootstrap.ts`
+- Demo data: `npm run db:seed` (180 days, ~900 sales, 47 products)
+- **`public/` MUST exist** for Docker build
+- **`public/fonts/`** — Noto Sans Arabic TTFs required for PDF (committed)
+- **`public/uploads/`** — runtime uploads (gitignored)
+- Do not commit `.env`; use `.env.example`
+
+### Local dev
+```bash
+npm run dev:kill
+npm run dev:clean -- --port 3002
+```
+Uses `--webpack` (not Turbopack) to avoid cache issues.
+
+---
+
+## Navigation (`components/layout/nav-config.ts`)
+
+Groups: main, inventory, operations, analytics, admin
+
+| Flag | Routes |
+|------|--------|
+| `adminOnly` | users, settings |
+| `accountantOnly` | purchases, expenses |
+
+Mobile bottom nav: dashboard, pos, sales, customers
+
+---
 
 ## UI Conventions
 
-See **`.cursor/rules/ui-design-system.mdc`** for full design system (typography, colors, components, RTL).
+See **`.cursor/rules/ui-design-system.mdc`** for full design system.
 
-- Route groups: `(auth)` for login, `(dashboard)` for app
-- Sidebar grouped nav + mobile bottom nav (`components/layout/`)
-- Nav config: `components/layout/nav-config.ts` — groups + adminOnly items
-- Page headers: `PageHeader` component
-- Data tables: wrap in `DataTableShell` from `components/ui/data-table-shell.tsx`
-- Empty lists: use `EmptyState` from `components/ui/empty-state.tsx`
-- Fonts: Inter + IBM Plex Sans Arabic (`app/layout.tsx`)
-- Primary color: indigo SaaS palette (`app/globals.css`)
+- Fonts: **Tajawal** (Arabic) + **Inter** (Latin)
+- Primary: indigo SaaS palette
+- `PageHeader`, `DataTableShell`, `EmptyState`, `Button loading={pending}`
+- RTL: logical properties (`ms-*`, `text-start`) — never `text-left`
+
+---
 
 ## Key File Paths
 
 | Purpose | Path |
 |---------|------|
 | Auth | `lib/auth.ts`, `lib/session.ts`, `middleware.ts` |
-| Prisma schema | `prisma/schema.prisma` |
-| Bootstrap | `prisma/bootstrap.ts`, `scripts/docker-init.sh` |
+| Permissions | `lib/permissions.ts` |
+| Prisma | `prisma/schema.prisma` |
+| Bootstrap / Seed | `prisma/bootstrap.ts`, `prisma/seed.ts` |
 | POS | `app/(dashboard)/pos/` |
-| Inventory services | `lib/application/services/inventory-service.ts` |
-| Sale service | `lib/application/services/sale-service.ts` |
-| Reports | `lib/application/services/report-service.ts` |
+| Sales list | `app/(dashboard)/sales/` |
+| Repairs | `app/(dashboard)/repairs/` |
+| Programming | `app/(dashboard)/programming/` |
+| Settings | `app/(dashboard)/settings/` |
 | Invoice PDF | `app/api/invoices/[id]/pdf/route.tsx` |
-| Validations | `lib/validations/index.ts` |
+| PDF fonts | `lib/pdf/register-fonts.ts` |
+| Money format | `lib/utils.ts` → `formatMoney()` |
 
-## Testing
+---
 
-- Unit tests: `tests/unit/` — run with `npm run test`
-- Profit calculations tested in `tests/unit/profit.test.ts`
+## Testing & Docs
 
-## Documentation
-
-- Full Arabic guide: `docs/GUIDE.md`
+- Tests: `npm run test` — `tests/unit/`
+- Full guide: `docs/GUIDE.md`
+- Changelog: `docs/CHANGELOG.md`
 - Run guide: `docs/RUN.md`
-- README: `README.md`
+- Audit: `docs/AUDIT.md`
 
-## Do NOT (differences from StoreLedger)
+---
 
-- Do NOT add multi-tenant `userId` scoping on entities
-- Do NOT add double-entry accounting / journal entries
-- Do NOT use StoreLedger's Orders/Suppliers/Income models
-- Do NOT remove `public/` directory — breaks Docker build
+## Do NOT
+
+- Do NOT add multi-tenant scoping
+- Do NOT add double-entry accounting
+- Do NOT remove `public/` or `public/fonts/`
+- Do NOT commit `.env` or `public/uploads/*` (except `.gitkeep`)
+- Do NOT use Helvetica for Arabic PDF text
+- Do NOT hardcode shop name in layout components
+- Do NOT force 2 decimal places in `formatMoney` for whole numbers

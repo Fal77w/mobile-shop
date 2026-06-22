@@ -4,105 +4,123 @@ alwaysApply: true
 
 # moblies-shop — UI/UX Design System
 
-**Last updated:** 2026-06-21  
-**Scope:** Frontend only — no backend/API/server action changes.
+**Last updated:** 2026-06-22
 
 ---
 
 ## Typography
 
 ### What changed
-- Replaced Geist fonts with **Inter** (Latin) + **IBM Plex Sans Arabic** (Arabic).
-- RTL body uses Arabic font first; LTR uses Inter first.
+- **Tajawal** (Arabic) + **Inter** (Latin) via `next/font/google`
+- Replaced earlier Geist and IBM Plex Sans Arabic
+- RTL body uses Tajawal first; LTR uses Inter first
 
 ### Where applied
-- `app/layout.tsx` — font loading via `next/font/google`
+- `app/layout.tsx` — font loading
 - `app/globals.css` — `--font-sans` token chain
 
 ### Why / impact
-- Professional SaaS readability in both Arabic and English.
-- IBM Plex Sans Arabic is a high-quality Arabic UI font with proper glyph support.
+- Tajawal: clean modern Arabic UI font, good readability for POS and tables
+- Inter: standard SaaS Latin companion
+
+### PDF (separate from UI fonts)
+- Invoice PDF uses **Noto Sans Arabic** (`public/fonts/`) — registered in `lib/pdf/register-fonts.ts`
+- Never use Helvetica for Arabic PDF text
+
+---
+
+## Money Display
+
+`formatMoney()` in `lib/utils.ts`:
+- Whole numbers: `200` not `200.00`
+- Latin digits (`numberingSystem: "latn"`)
+- Use in all UI tables, cards, POS, reports
 
 ---
 
 ## Color System (SaaS Neutral Palette)
 
-### What changed
-- Primary: indigo `#4f46e5` (light) / `#818cf8` (dark) — Stripe/Shopify admin feel.
-- Semantic tokens: `--success`, `--warning`, `--destructive` with tinted badge backgrounds.
-- Subtle borders: `border-border/60` for reduced visual noise.
+- Primary: indigo `#4f46e5` (light) / `#818cf8` (dark)
+- Semantic tokens: `--success`, `--warning`, `--destructive` with tinted badge backgrounds
+- Subtle borders: `border-border/60`
 
 ### Where applied
-- `app/globals.css` — CSS custom properties
-- `components/ui/badge.tsx` — semantic color variants
-- `components/dashboard/stat-card.tsx` — accent icon backgrounds
+- `app/globals.css`
+- `components/ui/badge.tsx`
+- `components/dashboard/stat-card.tsx`
 
 ---
 
 ## Spacing & Layout Shell
 
-### What changed
 - `--sidebar-width: 16.5rem`, `--header-height: 3.75rem`
-- `.app-shell-main` — subtle indigo radial gradient background
-- `.page-container` — max-width 1400px centered content
+- `.app-shell-main` — subtle indigo radial gradient
+- `.page-container` — max-width 1400px
 - Sticky header with backdrop blur
+- **Sidebar:** `h-screen sticky` — logout + theme toggle always visible (no scroll-to-find)
 
 ### Where applied
-- `app/(dashboard)/layout.tsx`
-- `components/layout/sidebar.tsx` — Header component
+- `app/(dashboard)/layout.tsx` — passes `shopName` from `ShopSettings` to Sidebar/Header
+- `components/layout/sidebar.tsx`
+- `components/layout/header.tsx`
+- `components/layout/mobile-menu-sheet.tsx`
 
-### Impact
-- Cleaner dashboard hierarchy; content doesn't stretch edge-to-edge on wide screens.
+### Shop branding
+- **Shop name** from `ShopSettings.shopName` — NOT from `messages/*/app.nameShort`
+- Logo from `ShopSettings.logoUrl` (uploaded to `public/uploads/`)
 
 ---
 
 ## Navigation UX
 
-### What changed
-- Sidebar grouped into: Main, Inventory, Operations, Analytics, Administration.
-- Active nav item: primary fill + shadow.
-- Header shows user name + role badge.
-- Mobile bottom nav: icon pill highlight on active tab.
-- Language switcher: segmented pill toggle (AR / EN).
+### Sidebar groups
+Main, Inventory, Operations, Analytics, Administration
+
+### Mobile bottom nav
+Dashboard, POS, **Sales**, Customers — icon pill on active tab
+
+### Header
+- User name + role badge
+- Logout + theme toggle icons (desktop)
+- Language switcher: segmented pill (AR / EN)
+
+### Permission-gated nav
+- `adminOnly`: users, settings
+- `accountantOnly`: purchases, expenses
 
 ### Where applied
-- `components/layout/nav-config.ts` — `NavGroup`, `getGroupedNavItems()`
+- `components/layout/nav-config.ts`
 - `components/layout/sidebar.tsx`
 - `components/layout/mobile-bottom-nav.tsx`
 - `components/layout/language-switcher.tsx`
 - `messages/ar.json`, `messages/en.json` — `nav.groups.*`
 
-### Impact
-- Reduced cognitive load; faster wayfinding for 15+ routes.
+---
+
+## POS UI (`app/(dashboard)/pos/pos-client.tsx`)
+
+### Layout
+- Category tabs (from product categories in DB)
+- Product grid cards (tap to add to cart)
+- Search bar above grid
+- Cart panel: qty edit, remove, customer select
+- **Quick payment buttons:** Cash | Card | On Account (not dropdown)
+- Complete sale → redirect to invoice page
+
+### Category labels
+- DB stores English category names (Samsung, Apple...)
+- Arabic display via `messages/*/pos.categoryNames.*`
 
 ---
 
 ## UI Primitives (components/ui/)
 
 ### Button (`button.tsx`)
-- Rounded-lg, shadow-sm on primary, `loading` prop with spinner, active scale feedback.
+- Rounded-lg, shadow-sm on primary, `loading` prop with spinner
+- **`asChild`:** spinner NOT passed to Slot children (fixes sale detail crash)
 
-### Card (`card.tsx`)
-- rounded-xl, softer border, added `CardFooter`.
-
-### Table (`table.tsx`)
-- Muted header row, uppercase column labels, `text-start` for RTL, tighter row padding.
-- Removed outer scroll wrapper — use `DataTableShell` instead.
-
-### Dialog (`dialog.tsx`)
-- Backdrop blur, rounded-xl, text-start headers, logical `end-*` close button.
-
-### Tabs (`tabs.tsx`)
-- Pill-style list with rounded-xl container, active tab shadow.
-
-### Badge (`badge.tsx`)
-- Rounded-md, tinted semantic colors via CSS vars (not hardcoded emerald/amber).
-
-### Input (`input.tsx`)
-- rounded-lg, ring-offset focus (unchanged pattern, consistent with tokens).
-
-### Label (`label.tsx`)
-- Explicit foreground color for contrast.
+### Card, Table, Dialog, Tabs, Badge, Input, Label
+- See prior conventions: rounded-xl cards, muted table headers, pill tabs, semantic badges
 
 ---
 
@@ -110,13 +128,12 @@ alwaysApply: true
 
 | Component | Path | Purpose |
 |-----------|------|---------|
-| `DataTableShell` | `components/ui/data-table-shell.tsx` | Bordered table container + optional footer count |
-| `FormSection` | `components/ui/form-section.tsx` | Grouped form fields with title + grid columns |
-| `FormField` | `components/ui/form-section.tsx` | Label + field wrapper |
-| `LoadingSpinner` | `components/ui/loading-spinner.tsx` | Inline/page loading indicator |
-| `EmptyState` | `components/ui/empty-state.tsx` | Dashed empty state with icon + action slot |
+| `DataTableShell` | `components/ui/data-table-shell.tsx` | Bordered table + footer count |
+| `FormSection` | `components/ui/form-section.tsx` | Grouped form fields |
+| `LoadingSpinner` | `components/ui/loading-spinner.tsx` | Loading indicator |
+| `EmptyState` | `components/ui/empty-state.tsx` | Zero-result views |
 
-### Usage pattern for list pages
+### List page pattern
 ```tsx
 <DataTableShell footer={`${items.length} items`}>
   <Table>...</Table>
@@ -125,60 +142,52 @@ alwaysApply: true
 
 ---
 
-## Page-Level Improvements
+## Page-Level Patterns
 
-### Dashboard (`app/(dashboard)/dashboard/page.tsx`)
-- Stat cards with colored icon accents.
-- EmptyState for no recent sales / low stock.
-- Quick links to POS and products.
-
-### Products (`app/(dashboard)/inventory/products/page.tsx`)
-- DataTableShell wrapper, EmptyState when no products, tabular-nums for prices.
-
-### Login (`app/(auth)/login/login-client.tsx`)
-- Brand icon, gradient background, pill language switcher, loading button.
-
-### Reports date filter (`reports/reports-date-filter.tsx`)
-- Card-wrapped filter form with labeled inputs.
-
-### Customers / Stock movements
-- DataTableShell + EmptyState on customers and movements pages.
-- Movements filter uses Card + Input + Button (consistent with reports filter).
+| Page | Pattern |
+|------|---------|
+| Dashboard | Stat cards, EmptyState, quick links |
+| Products | DataTableShell, tabular-nums prices |
+| **Sales** `/sales` | Date filter card, summary stats, line-item detail in table |
+| **Programming** `/programming` | Form + orders table + status badges |
+| **Repairs** `/repairs` | Same pattern as programming |
+| **Settings** `/settings` | Logo upload preview, invoice customization fields |
+| **Reports** | Card-wrapped date filter, improved tab layout |
+| Login | Brand icon, gradient bg, loading button |
 
 ---
 
-### What changed
-- Position: top-center (desktop + mobile).
-- closeButton enabled, rounded-xl toast styling.
-
-### Where
-- `components/app-toaster.tsx`
+## Toast (`components/app-toaster.tsx`)
+- Position: top-center
+- closeButton enabled, rounded-xl styling
 
 ---
 
 ## RTL / LTR Rules
 
-1. Use **logical properties**: `ms-*`, `me-*`, `ps-*`, `pe-*`, `start-*`, `end-*`, `text-start`, `text-end`.
-2. Never use `text-left` / `text-right` on table headers — use `text-start`.
-3. Directional icons (chevrons, arrows): add `rtl-flip` class when needed.
-4. Arabic headings: no negative letter-spacing (`[dir="rtl"] h1-h4 { letter-spacing: 0 }`).
+1. Use **logical properties**: `ms-*`, `me-*`, `ps-*`, `pe-*`, `start-*`, `end-*`, `text-start`, `text-end`
+2. Never `text-left` / `text-right` on table headers — use `text-start`
+3. Directional icons: `rtl-flip` when needed
+4. Arabic headings: no negative letter-spacing
 
 ---
 
 ## Do NOT (UI layer)
 
-- Do NOT change Prisma schema, server actions, API routes, or business services for UI tasks.
-- Do NOT remove `touch-manipulation` or 16px mobile input rule.
-- Do NOT use hardcoded English in components — use next-intl.
-- Do NOT use `text-left`/`margin-left` — use logical equivalents.
+- Do NOT hardcode shop name — read from `ShopSettings` via layout props
+- Do NOT remove `touch-manipulation` or 16px mobile input rule
+- Do NOT use hardcoded English — use next-intl
+- Do NOT use `text-left`/`margin-left` — use logical equivalents
+- Do NOT force `.00` on whole numbers in display
 
 ---
 
 ## When Adding New UI
 
-1. Reuse tokens from `globals.css` — no one-off hex colors.
-2. Wrap data tables in `DataTableShell`.
-3. Use `EmptyState` for zero-result views.
-4. Use `PageHeader` for all dashboard page titles.
-5. Use `Button loading={pending}` for async actions.
-6. **Update this file** with what/why/where/impact.
+1. Reuse tokens from `globals.css`
+2. Wrap tables in `DataTableShell`
+3. Use `EmptyState` for zero results
+4. Use `PageHeader` for page titles
+5. Use `Button loading={pending}` for async actions
+6. Use `formatMoney()` for all currency display
+7. **Update this file** with what/why/where/impact
