@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+const CATEGORIES = ["سامسونج", "أبل", "شاومي", "إكسسوارات", "برمجة"];
+
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -27,8 +29,8 @@ async function main() {
     process.exit(1);
   }
 
-  const name = process.env.ADMIN_NAME?.trim() || "Shop Admin";
   const locale = process.env.ADMIN_LOCALE?.trim() === "en" ? "en" : "ar";
+  const name = process.env.ADMIN_NAME?.trim() || (locale === "ar" ? "مدير المتجر" : "Shop Admin");
   const passwordHash = await bcrypt.hash(password, 12);
 
   await prisma.$transaction(async (tx) => {
@@ -53,15 +55,14 @@ async function main() {
     });
 
     const mainWarehouse = await tx.warehouse.create({
-      data: { name: "Main Warehouse" },
+      data: { name: "المستودع الرئيسي" },
     });
 
     await tx.warehouse.create({
-      data: { name: "Accessories Warehouse" },
+      data: { name: "مستودع الإكسسوارات" },
     });
 
-    const categories = ["Samsung", "Apple", "Xiaomi", "Accessories", "Programming"];
-    for (const cat of categories) {
+    for (const cat of CATEGORIES) {
       await tx.category.create({
         data: { name: cat, warehouseId: mainWarehouse.id },
       });

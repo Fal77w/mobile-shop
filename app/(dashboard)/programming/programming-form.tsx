@@ -54,7 +54,7 @@ export function ProgrammingForm() {
           </div>
           <div className="space-y-2">
             <Label>{t("deviceType")}</Label>
-            <Input name="deviceType" placeholder="iPhone 14, Samsung S24..." required />
+            <Input name="deviceType" placeholder="آيفون 14، سامسونج S24..." required />
           </div>
           <div className="space-y-2">
             <Label>{t("serviceType")}</Label>

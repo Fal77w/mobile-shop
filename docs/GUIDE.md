@@ -115,7 +115,12 @@ moblies-shop/
 
 ## 2. التثبيت والتشغيل
 
-### Docker (موصى به للإنتاج)
+### Docker Compose (موصى به للإنتاج)
+
+#### المتطلبات
+Docker 24+ و Docker Compose v2
+
+#### الخطوة 1 — إعداد `.env`
 
 ```bash
 cd moblies-shop
@@ -126,7 +131,7 @@ cp .env.example .env
 
 ```env
 APP_PORT=3022
-AUTH_URL=http://localhost:3022          # يجب أن يطابق عنوان الوصول
+AUTH_URL=http://localhost:3022          # يجب أن يطابق عنوان المتصفح
 AUTH_SECRET=...                           # openssl rand -base64 32
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=كلمة-مرور-قوية
@@ -134,11 +139,70 @@ ADMIN_NAME=مدير المتجر
 ADMIN_LOCALE=ar
 ```
 
+#### الخطوة 2 — تشغيل المشروع
+
 ```bash
 docker compose up -d --build
+# أو: npm run docker:up
 ```
 
-افتح: **http://localhost:3022**
+**الخدمات:**
+
+```
+postgres  →  migrate  →  app
+   │           │          │
+   │      migrations    Next.js
+   │      + bootstrap   :APP_PORT
+   └── PostgreSQL 16
+```
+
+| الخدمة | الوصف |
+|--------|-------|
+| `postgres` | قاعدة البيانات — البيانات محفوظة في volume `postgres_data` |
+| `migrate` | يشغّل `scripts/docker-init.sh`: migrations + إنشاء Admin إذا القاعدة فارغة |
+| `app` | التطبيق على `http://localhost:APP_PORT` |
+
+افتح: **http://localhost:3022**  
+سجّل الدخول: `ADMIN_EMAIL` / `ADMIN_PASSWORD`
+
+#### الخطوة 3 — بيانات تجريبية (اختياري)
+
+```bash
+docker compose --profile demo run --rm seed
+# أو: npm run docker:seed
+```
+
+يُنشئ بيانات عربية: ~47 منتج، ~39 عميل، ~800+ مبيعة (180 يوم)، صيانة، برمجة، مصروفات.  
+موظف تجريبي: `employee@demo.shop` / `employee123`
+
+> الـ seed **لا يحذف** المستخدمين — يحذف المنتجات والمبيعات والعملاء التجريبيين فقط.
+
+**إعادة تعبئة البيانات:**
+
+```bash
+docker compose --profile demo run --rm seed
+```
+
+#### أوامر Docker
+
+| الأمر | الوظيفة |
+|-------|---------|
+| `docker compose up -d --build` | تشغيل / إعادة بناء |
+| `docker compose down` | إيقاف (البيانات تبقى) |
+| `docker compose down -v` | إيقاف + حذف قاعدة البيانات |
+| `docker compose logs -f app` | سجلات التطبيق |
+| `docker compose ps` | حالة الخدمات |
+| `npm run docker:up` | اختصار للتشغيل |
+| `npm run docker:seed` | بيانات تجريبية |
+
+#### استكشاف أخطاء Docker
+
+| المشكلة | الحل |
+|---------|------|
+| Docker build فشل: `public not found` | تأكد وجود مجلد `public/` |
+| لا أستطيع تسجيل الدخول | تحقق من `ADMIN_EMAIL/PASSWORD` |
+| Auth error | `AUTH_SECRET` و `AUTH_URL` يطابقان عنوان الموقع |
+| البيانات التجريبية فارغة | شغّل `docker compose --profile demo run --rm seed` بعد `up` |
 
 ### تشغيل محلي (بدون Docker)
 
@@ -159,10 +223,17 @@ npm run dev:clean -- --port 3002
 
 ### بيانات تجريبية (اختياري)
 
+**داخل Docker** (بعد `docker compose up`):
+
 ```bash
-npm run docker:seed    # داخل Docker
-# أو
-npm run db:seed        # محلياً
+docker compose --profile demo run --rm seed
+# أو: npm run docker:seed
+```
+
+**محلياً** (بدون Docker للتطبيق):
+
+```bash
+npm run db:seed
 ```
 
 > **ملاحظة:** الـ seed يحذف البيانات التشغيلية فقط — **لا يحذف** المستخدمين. يُنشئ:

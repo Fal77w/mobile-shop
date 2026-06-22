@@ -152,15 +152,57 @@ NetProfit   = GrossProfit − Σ(expenses)
 
 ## Production & Docker
 
-- Services: `postgres` → `migrate` → `app` (+ optional `seed` profile)
-- `APP_PORT=3022`, `AUTH_URL` must match public URL
+### Quick start
+
+```bash
+cp .env.example .env
+# Set: AUTH_SECRET, AUTH_URL, ADMIN_EMAIL, ADMIN_PASSWORD
+
+docker compose up -d --build
+```
+
+Open `http://localhost:APP_PORT` (default **3022**).
+
+### Services (`docker-compose.yml`)
+
+| Service | Role |
+|---------|------|
+| `postgres` | PostgreSQL 16 — data in `postgres_data` volume |
+| `migrate` | `scripts/docker-init.sh` → migrate + bootstrap admin if empty DB |
+| `app` | Next.js production on port 3000 → mapped to `APP_PORT` |
+| `seed` | Demo data — **profile `demo` only**, not started by default |
+
+### Demo / seed data
+
+```bash
+# After app is running (Docker)
+docker compose --profile demo run --rm seed
+npm run docker:seed
+
+# Local dev (requires DATABASE_URL)
+npm run db:seed
+```
+
+Seed: Arabic products, ~800+ sales (180 days), customers, repairs, programming.  
+Does **not** delete users. Demo employee: `employee@demo.shop` / `employee123`
+
+### Useful commands
+
+```bash
+docker compose down          # stop (keep data)
+docker compose down -v       # stop + wipe database
+docker compose logs -f app   # app logs
+npm run docker:up            # up -d --build
+npm run docker:down
+npm run docker:logs
+```
+
+### Rules
+
+- `AUTH_URL` must match browser URL exactly
 - `AUTH_SECRET`: `openssl rand -base64 32`
-- Bootstrap: `scripts/docker-init.sh` → migrate + `prisma/bootstrap.ts`
-- Demo data: `npm run db:seed` (180 days, ~900 sales, 47 products)
+- Bootstrap admin from `.env` on first empty DB
 - **`public/` MUST exist** for Docker build
-- **`public/fonts/`** — Noto Sans Arabic TTFs required for PDF (committed)
-- **`public/uploads/`** — runtime uploads (gitignored)
-- Do not commit `.env`; use `.env.example`
 
 ### Local dev
 ```bash

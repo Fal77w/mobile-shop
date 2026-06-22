@@ -3,11 +3,30 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-const DEFAULT_CATEGORIES = ["Samsung", "Apple", "Xiaomi", "Accessories", "Programming"];
+const CAT = {
+  SAMSUNG: "سامسونج",
+  APPLE: "أبل",
+  XIAOMI: "شاومي",
+  ACCESSORIES: "إكسسوارات",
+  PROGRAMMING: "برمجة",
+} as const;
+
+const DEFAULT_CATEGORIES = Object.values(CAT);
+
+const LEGACY_CATEGORIES: Record<string, string> = {
+  Samsung: CAT.SAMSUNG,
+  Apple: CAT.APPLE,
+  Xiaomi: CAT.XIAOMI,
+  Accessories: CAT.ACCESSORIES,
+  Programming: CAT.PROGRAMMING,
+};
+
+const WAREHOUSE_MAIN = "المستودع الرئيسي";
+const WAREHOUSE_ACCESSORIES = "مستودع الإكسسوارات";
 
 const SUPPLIERS = [
   "مورد سامسونج الرئيسي",
-  "موزع Apple Middle East",
+  "موزع أبل الشرق الأوسط",
   "شركة شاومي للتجارة",
   "مستودع الإكسسوارات",
   "تقنية الجزيرة",
@@ -77,53 +96,53 @@ type ProductSeed = {
 };
 
 const PRODUCT_CATALOG: ProductSeed[] = [
-  { name: "Samsung Galaxy S24 Ultra", sku: "SAM-S24U", barcode: "8801001001", category: "Samsung", warehouse: "main", costPrice: 3200, sellingPrice: 3650, quantity: 4, lowStockAlert: 2 },
-  { name: "Samsung Galaxy A54", sku: "SAM-A54", barcode: "8801001002", category: "Samsung", warehouse: "main", costPrice: 800, sellingPrice: 950, quantity: 12, lowStockAlert: 3 },
-  { name: "Samsung Galaxy A05", sku: "SAM-A05", barcode: "8801001003", category: "Samsung", warehouse: "main", costPrice: 280, sellingPrice: 350, quantity: 25, lowStockAlert: 5 },
-  { name: "Samsung Galaxy Tab A8", sku: "SAM-TABA8", category: "Samsung", warehouse: "main", costPrice: 650, sellingPrice: 780, quantity: 6, lowStockAlert: 2 },
-  { name: "Samsung Galaxy Buds2", sku: "SAM-BUDS2", category: "Samsung", warehouse: "main", costPrice: 180, sellingPrice: 240, quantity: 15, lowStockAlert: 4 },
-  { name: "iPhone 15 Pro Max", sku: "APL-15PM", barcode: "1901002001", category: "Apple", warehouse: "main", costPrice: 4200, sellingPrice: 4800, quantity: 3, lowStockAlert: 1 },
-  { name: "iPhone 15", sku: "APL-15", barcode: "1901002002", category: "Apple", warehouse: "main", costPrice: 2800, sellingPrice: 3200, quantity: 5, lowStockAlert: 2 },
-  { name: "iPhone 14", sku: "APL-14", barcode: "1901002003", category: "Apple", warehouse: "main", costPrice: 2200, sellingPrice: 2550, quantity: 7, lowStockAlert: 2 },
-  { name: "iPhone 13", sku: "APL-13", category: "Apple", warehouse: "main", costPrice: 1800, sellingPrice: 2100, quantity: 4, lowStockAlert: 2 },
-  { name: "AirPods Pro 2", sku: "APL-APP2", category: "Apple", warehouse: "main", costPrice: 650, sellingPrice: 820, quantity: 10, lowStockAlert: 3 },
-  { name: "Xiaomi Redmi Note 13 Pro", sku: "XIA-RN13P", barcode: "6901003001", category: "Xiaomi", warehouse: "main", costPrice: 720, sellingPrice: 880, quantity: 14, lowStockAlert: 4 },
-  { name: "Xiaomi Redmi Note 13", sku: "XIA-RN13", barcode: "6901003002", category: "Xiaomi", warehouse: "main", costPrice: 580, sellingPrice: 720, quantity: 18, lowStockAlert: 5 },
-  { name: "Xiaomi Poco X6 Pro", sku: "XIA-PX6P", category: "Xiaomi", warehouse: "main", costPrice: 890, sellingPrice: 1050, quantity: 8, lowStockAlert: 3 },
-  { name: "Xiaomi Redmi A3", sku: "XIA-RA3", category: "Xiaomi", warehouse: "main", costPrice: 220, sellingPrice: 290, quantity: 30, lowStockAlert: 8 },
-  { name: "Xiaomi Smart Band 8", sku: "XIA-SB8", category: "Xiaomi", warehouse: "main", costPrice: 120, sellingPrice: 165, quantity: 22, lowStockAlert: 6 },
-  { name: "iPhone 15 Silicone Case", sku: "ACC-IP15C", category: "Accessories", warehouse: "accessories", costPrice: 8, sellingPrice: 25, quantity: 45, lowStockAlert: 10 },
-  { name: "Samsung Clear Cover A54", sku: "ACC-SA54C", category: "Accessories", warehouse: "accessories", costPrice: 5, sellingPrice: 18, quantity: 60, lowStockAlert: 15 },
-  { name: "USB-C Fast Charger 25W", sku: "ACC-CH25", category: "Accessories", warehouse: "accessories", costPrice: 12, sellingPrice: 35, quantity: 80, lowStockAlert: 20 },
-  { name: "Tempered Glass iPhone 15", sku: "ACC-TG15", category: "Accessories", warehouse: "accessories", costPrice: 3, sellingPrice: 15, quantity: 100, lowStockAlert: 25 },
-  { name: "Tempered Glass Samsung S24", sku: "ACC-TGS24", category: "Accessories", warehouse: "accessories", costPrice: 3, sellingPrice: 15, quantity: 55, lowStockAlert: 15 },
-  { name: "Wireless Earbuds TWS", sku: "ACC-TWS", category: "Accessories", warehouse: "accessories", costPrice: 35, sellingPrice: 75, quantity: 35, lowStockAlert: 8 },
-  { name: "Power Bank 20000mAh", sku: "ACC-PB20", category: "Accessories", warehouse: "accessories", costPrice: 45, sellingPrice: 95, quantity: 28, lowStockAlert: 6 },
-  { name: "Car Phone Holder", sku: "ACC-CARH", category: "Accessories", warehouse: "accessories", costPrice: 15, sellingPrice: 40, quantity: 40, lowStockAlert: 10 },
-  { name: "Lightning Cable 2m", sku: "ACC-LGT2", category: "Accessories", warehouse: "accessories", costPrice: 6, sellingPrice: 20, quantity: 2, lowStockAlert: 5 },
-  { name: "USB-C Cable 2m", sku: "ACC-USBC2", category: "Accessories", warehouse: "accessories", costPrice: 5, sellingPrice: 18, quantity: 3, lowStockAlert: 5 },
-  { name: "Phone Ring Holder", sku: "ACC-RING", category: "Accessories", warehouse: "accessories", costPrice: 2, sellingPrice: 10, quantity: 1, lowStockAlert: 5 },
-  { name: "Software Unlock Service", sku: "PRG-UNLK", category: "Programming", warehouse: "main", costPrice: 0, sellingPrice: 150, quantity: 999, lowStockAlert: 0 },
-  { name: "FRP Bypass Service", sku: "PRG-FRP", category: "Programming", warehouse: "main", costPrice: 0, sellingPrice: 80, quantity: 999, lowStockAlert: 0 },
-  { name: "Data Recovery Service", sku: "PRG-RECV", category: "Programming", warehouse: "main", costPrice: 0, sellingPrice: 200, quantity: 999, lowStockAlert: 0 },
-  { name: "Screen Replacement Labor", sku: "PRG-SCRN", category: "Programming", warehouse: "main", costPrice: 50, sellingPrice: 120, quantity: 999, lowStockAlert: 0 },
-  { name: "Samsung Galaxy S23", sku: "SAM-S23", barcode: "8801001004", category: "Samsung", warehouse: "main", costPrice: 2400, sellingPrice: 2750, quantity: 6, lowStockAlert: 2 },
-  { name: "Samsung Galaxy A15", sku: "SAM-A15", category: "Samsung", warehouse: "main", costPrice: 350, sellingPrice: 420, quantity: 20, lowStockAlert: 5 },
-  { name: "Samsung Galaxy Watch 6", sku: "SAM-W6", category: "Samsung", warehouse: "main", costPrice: 750, sellingPrice: 920, quantity: 8, lowStockAlert: 2 },
-  { name: "iPhone 12", sku: "APL-12", category: "Apple", warehouse: "main", costPrice: 1500, sellingPrice: 1800, quantity: 5, lowStockAlert: 2 },
-  { name: "iPhone SE 2022", sku: "APL-SE22", category: "Apple", warehouse: "main", costPrice: 1100, sellingPrice: 1350, quantity: 7, lowStockAlert: 2 },
-  { name: "iPad 10th Gen", sku: "APL-IPAD10", category: "Apple", warehouse: "main", costPrice: 1400, sellingPrice: 1680, quantity: 4, lowStockAlert: 1 },
-  { name: "Xiaomi 14 Ultra", sku: "XIA-14U", category: "Xiaomi", warehouse: "main", costPrice: 2800, sellingPrice: 3200, quantity: 3, lowStockAlert: 1 },
-  { name: "Xiaomi Redmi 13C", sku: "XIA-R13C", category: "Xiaomi", warehouse: "main", costPrice: 380, sellingPrice: 460, quantity: 22, lowStockAlert: 6 },
-  { name: "SIM Card STC 5G", sku: "SIM-STC5G", category: "Accessories", warehouse: "accessories", costPrice: 0, sellingPrice: 25, quantity: 200, lowStockAlert: 30 },
-  { name: "SIM Card Mobily", sku: "SIM-MOB", category: "Accessories", warehouse: "accessories", costPrice: 0, sellingPrice: 20, quantity: 150, lowStockAlert: 25 },
-  { name: "SIM Card Zain", sku: "SIM-ZAIN", category: "Accessories", warehouse: "accessories", costPrice: 0, sellingPrice: 22, quantity: 180, lowStockAlert: 30 },
-  { name: "Memory Card 128GB", sku: "ACC-MC128", category: "Accessories", warehouse: "accessories", costPrice: 35, sellingPrice: 65, quantity: 50, lowStockAlert: 10 },
-  { name: "Memory Card 256GB", sku: "ACC-MC256", category: "Accessories", warehouse: "accessories", costPrice: 65, sellingPrice: 110, quantity: 35, lowStockAlert: 8 },
-  { name: "Bluetooth Speaker Mini", sku: "ACC-BTSPK", category: "Accessories", warehouse: "accessories", costPrice: 28, sellingPrice: 55, quantity: 25, lowStockAlert: 6 },
-  { name: "Account Unlock Service", sku: "PRG-ACC", category: "Programming", warehouse: "main", costPrice: 0, sellingPrice: 100, quantity: 999, lowStockAlert: 0 },
-  { name: "Flash / Firmware Service", sku: "PRG-FLSH", category: "Programming", warehouse: "main", costPrice: 0, sellingPrice: 90, quantity: 999, lowStockAlert: 0 },
-  { name: "Network Unlock Service", sku: "PRG-NET", category: "Programming", warehouse: "main", costPrice: 0, sellingPrice: 120, quantity: 999, lowStockAlert: 0 },
+  { name: "سامسونج جالكسي S24 ألترا", sku: "SAM-S24U", barcode: "8801001001", category: CAT.SAMSUNG, warehouse: "main", costPrice: 3200, sellingPrice: 3650, quantity: 4, lowStockAlert: 2 },
+  { name: "سامسونج جالكسي A54", sku: "SAM-A54", barcode: "8801001002", category: CAT.SAMSUNG, warehouse: "main", costPrice: 800, sellingPrice: 950, quantity: 12, lowStockAlert: 3 },
+  { name: "سامسونج جالكسي A05", sku: "SAM-A05", barcode: "8801001003", category: CAT.SAMSUNG, warehouse: "main", costPrice: 280, sellingPrice: 350, quantity: 25, lowStockAlert: 5 },
+  { name: "سامسونج جالكسي تاب A8", sku: "SAM-TABA8", category: CAT.SAMSUNG, warehouse: "main", costPrice: 650, sellingPrice: 780, quantity: 6, lowStockAlert: 2 },
+  { name: "سامسونج جالكسي بودز 2", sku: "SAM-BUDS2", category: CAT.SAMSUNG, warehouse: "main", costPrice: 180, sellingPrice: 240, quantity: 15, lowStockAlert: 4 },
+  { name: "آيفون 15 برو ماكس", sku: "APL-15PM", barcode: "1901002001", category: CAT.APPLE, warehouse: "main", costPrice: 4200, sellingPrice: 4800, quantity: 3, lowStockAlert: 1 },
+  { name: "آيفون 15", sku: "APL-15", barcode: "1901002002", category: CAT.APPLE, warehouse: "main", costPrice: 2800, sellingPrice: 3200, quantity: 5, lowStockAlert: 2 },
+  { name: "آيفون 14", sku: "APL-14", barcode: "1901002003", category: CAT.APPLE, warehouse: "main", costPrice: 2200, sellingPrice: 2550, quantity: 7, lowStockAlert: 2 },
+  { name: "آيفون 13", sku: "APL-13", category: CAT.APPLE, warehouse: "main", costPrice: 1800, sellingPrice: 2100, quantity: 4, lowStockAlert: 2 },
+  { name: "إيربودز برو 2", sku: "APL-APP2", category: CAT.APPLE, warehouse: "main", costPrice: 650, sellingPrice: 820, quantity: 10, lowStockAlert: 3 },
+  { name: "شاومي ريدمي نوت 13 برو", sku: "XIA-RN13P", barcode: "6901003001", category: CAT.XIAOMI, warehouse: "main", costPrice: 720, sellingPrice: 880, quantity: 14, lowStockAlert: 4 },
+  { name: "شاومي ريدمي نوت 13", sku: "XIA-RN13", barcode: "6901003002", category: CAT.XIAOMI, warehouse: "main", costPrice: 580, sellingPrice: 720, quantity: 18, lowStockAlert: 5 },
+  { name: "شاومي بوكو X6 برو", sku: "XIA-PX6P", category: CAT.XIAOMI, warehouse: "main", costPrice: 890, sellingPrice: 1050, quantity: 8, lowStockAlert: 3 },
+  { name: "شاومي ريدمي A3", sku: "XIA-RA3", category: CAT.XIAOMI, warehouse: "main", costPrice: 220, sellingPrice: 290, quantity: 30, lowStockAlert: 8 },
+  { name: "شاومي سمارت باند 8", sku: "XIA-SB8", category: CAT.XIAOMI, warehouse: "main", costPrice: 120, sellingPrice: 165, quantity: 22, lowStockAlert: 6 },
+  { name: "غطاء سيليكون آيفون 15", sku: "ACC-IP15C", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 8, sellingPrice: 25, quantity: 45, lowStockAlert: 10 },
+  { name: "غطاء شفاف سامسونج A54", sku: "ACC-SA54C", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 5, sellingPrice: 18, quantity: 60, lowStockAlert: 15 },
+  { name: "شاحن سريع USB-C 25 واط", sku: "ACC-CH25", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 12, sellingPrice: 35, quantity: 80, lowStockAlert: 20 },
+  { name: "زجاج حماية آيفون 15", sku: "ACC-TG15", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 3, sellingPrice: 15, quantity: 100, lowStockAlert: 25 },
+  { name: "زجاج حماية سامسونج S24", sku: "ACC-TGS24", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 3, sellingPrice: 15, quantity: 55, lowStockAlert: 15 },
+  { name: "سماعات لاسلكية TWS", sku: "ACC-TWS", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 35, sellingPrice: 75, quantity: 35, lowStockAlert: 8 },
+  { name: "بطارية متنقلة 20000 مللي", sku: "ACC-PB20", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 45, sellingPrice: 95, quantity: 28, lowStockAlert: 6 },
+  { name: "حامل جوال للسيارة", sku: "ACC-CARH", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 15, sellingPrice: 40, quantity: 40, lowStockAlert: 10 },
+  { name: "كابل لايتنينج 2 متر", sku: "ACC-LGT2", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 6, sellingPrice: 20, quantity: 2, lowStockAlert: 5 },
+  { name: "كابل USB-C 2 متر", sku: "ACC-USBC2", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 5, sellingPrice: 18, quantity: 3, lowStockAlert: 5 },
+  { name: "حلقة حامل للجوال", sku: "ACC-RING", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 2, sellingPrice: 10, quantity: 1, lowStockAlert: 5 },
+  { name: "خدمة فك قفل البرمجيات", sku: "PRG-UNLK", category: CAT.PROGRAMMING, warehouse: "main", costPrice: 0, sellingPrice: 150, quantity: 999, lowStockAlert: 0 },
+  { name: "خدمة تجاوز FRP", sku: "PRG-FRP", category: CAT.PROGRAMMING, warehouse: "main", costPrice: 0, sellingPrice: 80, quantity: 999, lowStockAlert: 0 },
+  { name: "خدمة استرجاع البيانات", sku: "PRG-RECV", category: CAT.PROGRAMMING, warehouse: "main", costPrice: 0, sellingPrice: 200, quantity: 999, lowStockAlert: 0 },
+  { name: "أجور تبديل الشاشة", sku: "PRG-SCRN", category: CAT.PROGRAMMING, warehouse: "main", costPrice: 50, sellingPrice: 120, quantity: 999, lowStockAlert: 0 },
+  { name: "سامسونج جالكسي S23", sku: "SAM-S23", barcode: "8801001004", category: CAT.SAMSUNG, warehouse: "main", costPrice: 2400, sellingPrice: 2750, quantity: 6, lowStockAlert: 2 },
+  { name: "سامسونج جالكسي A15", sku: "SAM-A15", category: CAT.SAMSUNG, warehouse: "main", costPrice: 350, sellingPrice: 420, quantity: 20, lowStockAlert: 5 },
+  { name: "سامسونج جالكسي واتش 6", sku: "SAM-W6", category: CAT.SAMSUNG, warehouse: "main", costPrice: 750, sellingPrice: 920, quantity: 8, lowStockAlert: 2 },
+  { name: "آيفون 12", sku: "APL-12", category: CAT.APPLE, warehouse: "main", costPrice: 1500, sellingPrice: 1800, quantity: 5, lowStockAlert: 2 },
+  { name: "آيفون SE 2022", sku: "APL-SE22", category: CAT.APPLE, warehouse: "main", costPrice: 1100, sellingPrice: 1350, quantity: 7, lowStockAlert: 2 },
+  { name: "آيباد الجيل العاشر", sku: "APL-IPAD10", category: CAT.APPLE, warehouse: "main", costPrice: 1400, sellingPrice: 1680, quantity: 4, lowStockAlert: 1 },
+  { name: "شاومي 14 ألترا", sku: "XIA-14U", category: CAT.XIAOMI, warehouse: "main", costPrice: 2800, sellingPrice: 3200, quantity: 3, lowStockAlert: 1 },
+  { name: "شاومي ريدمي 13C", sku: "XIA-R13C", category: CAT.XIAOMI, warehouse: "main", costPrice: 380, sellingPrice: 460, quantity: 22, lowStockAlert: 6 },
+  { name: "شريحة STC 5G", sku: "SIM-STC5G", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 0, sellingPrice: 25, quantity: 200, lowStockAlert: 30 },
+  { name: "شريحة موبايلي", sku: "SIM-MOB", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 0, sellingPrice: 20, quantity: 150, lowStockAlert: 25 },
+  { name: "شريحة زين", sku: "SIM-ZAIN", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 0, sellingPrice: 22, quantity: 180, lowStockAlert: 30 },
+  { name: "ذاكرة خارجية 128 جيجا", sku: "ACC-MC128", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 35, sellingPrice: 65, quantity: 50, lowStockAlert: 10 },
+  { name: "ذاكرة خارجية 256 جيجا", sku: "ACC-MC256", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 65, sellingPrice: 110, quantity: 35, lowStockAlert: 8 },
+  { name: "سماعة بلوتوث صغيرة", sku: "ACC-BTSPK", category: CAT.ACCESSORIES, warehouse: "accessories", costPrice: 28, sellingPrice: 55, quantity: 25, lowStockAlert: 6 },
+  { name: "خدمة فك حساب الجهاز", sku: "PRG-ACC", category: CAT.PROGRAMMING, warehouse: "main", costPrice: 0, sellingPrice: 100, quantity: 999, lowStockAlert: 0 },
+  { name: "خدمة تفليش وتحديث نظام", sku: "PRG-FLSH", category: CAT.PROGRAMMING, warehouse: "main", costPrice: 0, sellingPrice: 90, quantity: 999, lowStockAlert: 0 },
+  { name: "خدمة فك شريحة الشبكة", sku: "PRG-NET", category: CAT.PROGRAMMING, warehouse: "main", costPrice: 0, sellingPrice: 120, quantity: 999, lowStockAlert: 0 },
 ];
 
 function daysAgo(n: number): Date {
@@ -145,6 +164,37 @@ function dec(n: number): string {
   return n.toFixed(2);
 }
 
+async function findOrRenameWarehouse(arName: string, legacyName: string) {
+  let wh = await prisma.warehouse.findFirst({ where: { name: arName } });
+  if (!wh) {
+    const legacy = await prisma.warehouse.findFirst({ where: { name: legacyName } });
+    if (legacy) {
+      wh = await prisma.warehouse.update({ where: { id: legacy.id }, data: { name: arName } });
+    } else {
+      wh = await prisma.warehouse.create({ data: { name: arName } });
+    }
+  }
+  return wh;
+}
+
+async function ensureCategory(warehouseId: string, arName: string) {
+  const legacyName = Object.entries(LEGACY_CATEGORIES).find(([, v]) => v === arName)?.[0];
+  if (legacyName) {
+    const legacy = await prisma.category.findFirst({
+      where: { warehouseId, name: legacyName },
+    });
+    if (legacy) {
+      await prisma.category.update({ where: { id: legacy.id }, data: { name: arName } });
+      return;
+    }
+  }
+  await prisma.category.upsert({
+    where: { warehouseId_name: { warehouseId, name: arName } },
+    create: { name: arName, warehouseId },
+    update: {},
+  });
+}
+
 async function ensureShopDefaults() {
   await prisma.shopSettings.upsert({
     where: { id: "default" },
@@ -162,19 +212,12 @@ async function ensureShopDefaults() {
     },
   });
 
-  let mainWh = await prisma.warehouse.findFirst({ where: { name: "Main Warehouse" } });
-  if (!mainWh) mainWh = await prisma.warehouse.create({ data: { name: "Main Warehouse" } });
-
-  let accWh = await prisma.warehouse.findFirst({ where: { name: "Accessories Warehouse" } });
-  if (!accWh) accWh = await prisma.warehouse.create({ data: { name: "Accessories Warehouse" } });
+  let mainWh = await findOrRenameWarehouse(WAREHOUSE_MAIN, "Main Warehouse");
+  let accWh = await findOrRenameWarehouse(WAREHOUSE_ACCESSORIES, "Accessories Warehouse");
 
   for (const wh of [mainWh, accWh]) {
     for (const name of DEFAULT_CATEGORIES) {
-      await prisma.category.upsert({
-        where: { warehouseId_name: { warehouseId: wh.id, name } },
-        create: { name, warehouseId: wh.id },
-        update: {},
-      });
+      await ensureCategory(wh.id, name);
     }
   }
 
@@ -332,6 +375,7 @@ async function seedExpenses() {
 type ProductRow = {
   id: string;
   name: string;
+  sku: string;
   sellingPrice: { toNumber?: () => number } | number | string;
   costPrice: { toNumber?: () => number } | number | string;
 };
@@ -525,16 +569,16 @@ async function seedPurchaseReturns(
 }
 
 const REPAIR_DEVICES = [
-  "Samsung Galaxy S24 Ultra",
-  "Samsung Galaxy A54",
-  "iPhone 15 Pro",
-  "iPhone 14",
-  "Xiaomi Redmi Note 13",
-  "Huawei P60",
-  "Oppo Reno 11",
-  "Realme GT 5",
-  "iPad Air",
-  "Samsung Galaxy Tab",
+  "سامسونج جالكسي S24 ألترا",
+  "سامسونج جالكسي A54",
+  "آيفون 15 برو",
+  "آيفون 14",
+  "شاومي ريدمي نوت 13",
+  "هواوي P60",
+  "أوبو رينو 11",
+  "ريلمي GT 5",
+  "آيباد إير",
+  "سامسونج جالكسي تاب",
 ];
 
 const REPAIR_ISSUES = [
@@ -551,6 +595,57 @@ const REPAIR_ISSUES = [
   "فك حساب iCloud",
   "تغيير فلاتة شحن",
 ];
+
+const PROGRAMMING_SERVICES = [
+  "فك قفل البرمجيات",
+  "تجاوز FRP",
+  "استرجاع البيانات",
+  "تفليش وتحديث نظام",
+  "فك شريحة الشبكة",
+  "فك حساب iCloud",
+  "إعادة برمجة IMEI",
+  "تخطي حماية جوجل",
+];
+
+async function seedProgrammingOrders(customers: { name: string; phone: string }[], userIds: string[]) {
+  const statuses: RepairStatus[] = ["NEW", "IN_PROGRESS", "READY", "DELIVERED"];
+  let orderCounter = 0;
+  let count = 0;
+
+  for (let day = 180; day >= 0; day--) {
+    const ordersToday = day % 7 === 5 ? 0 : Math.random() > 0.65 ? 1 + Math.floor(Math.random() * 2) : 0;
+    for (let r = 0; r < ordersToday; r++) {
+      orderCounter++;
+      const createdAt = daysAgo(day);
+      const customer = pick(customers);
+      const cost = 60 + Math.floor(Math.random() * 340);
+      const daysSince = 180 - day;
+      let status: RepairStatus;
+      if (daysSince > 14) status = "DELIVERED";
+      else if (daysSince > 7) status = pick(["READY", "DELIVERED"]);
+      else if (daysSince > 3) status = pick(["IN_PROGRESS", "READY"]);
+      else status = pick(statuses);
+
+      await prisma.programmingOrder.create({
+        data: {
+          orderNumber: `PRG-${createdAt.getFullYear()}-${String(orderCounter).padStart(4, "0")}`,
+          customerName: customer.name,
+          phone: customer.phone,
+          deviceType: pick(REPAIR_DEVICES),
+          serviceType: pick(PROGRAMMING_SERVICES),
+          cost: dec(cost),
+          status,
+          notes: Math.random() > 0.75 ? "العميل طلب نسخة احتياطية قبل البدء" : null,
+          createdById: pick(userIds),
+          createdAt,
+          deliveredAt: status === "DELIVERED" ? new Date(createdAt.getTime() + 86400000 * (1 + Math.floor(Math.random() * 4))) : null,
+        },
+      });
+      count++;
+    }
+  }
+  return count;
+}
 
 async function seedRepairOrders(customers: { name: string; phone: string }[], userIds: string[]) {
   const statuses: RepairStatus[] = ["NEW", "IN_PROGRESS", "READY", "DELIVERED"];
@@ -781,15 +876,8 @@ async function seedStockTransfers(
   products: ProductRow[],
   userIds: string[]
 ) {
-  const accProducts = products.filter(
-    (p) =>
-      p.name.includes("Case") ||
-      p.name.includes("Charger") ||
-      p.name.includes("Cable") ||
-      p.name.includes("Glass") ||
-      p.name.includes("SIM")
-  );
-  const mainProducts = products.filter((p) => p.name.includes("Samsung") || p.name.includes("Xiaomi"));
+  const accProducts = products.filter((p) => p.sku.startsWith("ACC-") || p.sku.startsWith("SIM-"));
+  const mainProducts = products.filter((p) => p.sku.startsWith("SAM-") || p.sku.startsWith("XIA-"));
 
   const transfers = [
     { from: accWh, to: mainWh, product: pick(accProducts), qty: 10, days: 30, notes: "نقل للعرض في المستودع الرئيسي" },
@@ -856,6 +944,9 @@ async function main() {
   const repairCount = await seedRepairOrders(CUSTOMERS, userIds);
   console.log(`  ✓ ${repairCount} repair orders`);
 
+  const programmingCount = await seedProgrammingOrders(CUSTOMERS, userIds);
+  console.log(`  ✓ ${programmingCount} programming orders`);
+
   await seedStockTransfers(mainWh, accWh, products, userIds);
   console.log("  ✓ stock transfers");
 
@@ -866,7 +957,7 @@ async function main() {
   const repairStats = await prisma.repairOrder.groupBy({ by: ["status"], _count: true });
   console.log(`\nDemo data seeded successfully.`);
   console.log(`  Sales: ${sales.length} | Products: ${products.length} | Customers: ${customers.length}`);
-  console.log(`  Repairs: ${repairCount} | Movements: ${movementCount}`);
+  console.log(`  Repairs: ${repairCount} | Programming: ${programmingCount} | Movements: ${movementCount}`);
   console.log(`  Repair status: ${repairStats.map((s) => `${s.status}=${s._count}`).join(", ")}`);
   console.log(`  Outstanding debt: ${Number(debtTotal._sum.totalDebt ?? 0).toFixed(2)}`);
   console.log(`  Demo employee login: employee@demo.shop / employee123`);

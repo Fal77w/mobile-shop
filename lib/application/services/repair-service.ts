@@ -90,7 +90,7 @@ export async function getRepairReport(from?: Date, to?: Date) {
 
 export async function getProgrammingIncomeReport(from?: Date, to?: Date) {
   const programmingProducts = await prisma.product.findMany({
-    where: { category: { name: "Programming" } },
+    where: { category: { name: { in: ["برمجة", "Programming"] } } },
     select: { id: true, name: true },
   });
   const ids = programmingProducts.map((p) => p.id);

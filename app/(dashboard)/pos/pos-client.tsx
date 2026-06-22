@@ -72,9 +72,12 @@ export function PosClient({
 
   const categoryLabel = useCallback(
     (name: string) => {
-      const known = ["Samsung", "Apple", "Xiaomi", "Accessories", "Programming"] as const;
-      if ((known as readonly string[]).includes(name)) {
-        return t(`categoryNames.${name}` as "categoryNames.Samsung");
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const translated = t(`categoryNames.${name}` as any);
+        if (translated && translated !== `categoryNames.${name}`) return translated;
+      } catch {
+        // مفتاح غير موجود — اعرض الاسم كما هو
       }
       return name;
     },

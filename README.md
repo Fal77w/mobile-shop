@@ -13,16 +13,27 @@
 
 ## Quick Start
 
-### Docker (recommended)
+### Docker Compose (recommended)
 
 ```bash
 cp .env.example .env
-# Set AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD, AUTH_URL
+# Required: AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD, AUTH_URL
 
 docker compose up -d --build
 ```
 
-Open **http://localhost:3022**
+Open **http://localhost:3022** — login with `ADMIN_EMAIL` / `ADMIN_PASSWORD`
+
+**Demo data (Arabic, ~800 sales / 180 days):**
+
+```bash
+docker compose --profile demo run --rm seed
+# or: npm run docker:seed
+```
+
+Demo employee: `employee@demo.shop` / `employee123`
+
+See [docs/RUN.md](docs/RUN.md) for full Docker guide (logs, restart, troubleshooting).
 
 ### Local
 
@@ -58,10 +69,15 @@ Open **http://localhost:3002**
 ## Demo Data
 
 ```bash
+# Docker (after compose up)
+docker compose --profile demo run --rm seed
+npm run docker:seed
+
+# Local dev
 npm run db:seed
-# ~47 products, ~900 sales over 180 days
-# employee@demo.shop / employee123
 ```
+
+~47 Arabic products, ~800+ sales over 180 days — `employee@demo.shop` / `employee123`
 
 ## Key Features
 
