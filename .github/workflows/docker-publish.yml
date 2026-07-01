@@ -20,10 +20,10 @@ jobs:
       matrix:
         include:
           - target: runner
-            image_name: moblies-shop
+            image_name: mobile-app
             cache_scope: app
           - target: builder
-            image_name: moblies-shop-migrate
+            image_name: mobile-app-migrate
             cache_scope: migrate
 
     steps:
@@ -43,7 +43,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image_name }}
+          images: fal77w/${{ matrix.image_name }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ github.run_number }}
