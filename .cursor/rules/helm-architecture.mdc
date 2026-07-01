@@ -1,15 +1,18 @@
 ---
-description: Engineering Standard إلزامي لنشر Helm على cluster RKE2 — Cluster هو المصدر الوحيد للحقيقة
+description: Helm Engineering Standard — self-contained rule for RKE2 cluster (copy to any project)
 alwaysApply: true
 ---
 
 # Helm Engineering Standard — RKE2 Production Cluster
 
-## إلزام قبل أي كتابة (Mandatory Pre-Work)
+> **هذا الملف هو المعيار الكامل.** انسخه إلى `.cursor/rules/helm-architecture.mdc` في أي مشروع.
+> لا حاجة لتوثيق خارجي — كل مواصفات الـ cluster وقواعد Helm موجودة هنا.
 
-**Before writing any Kubernetes manifest or Helm chart, the AI MUST inspect all infrastructure documentation.**
+---
 
-The infrastructure documentation is the **authoritative source**. Never assume anything that is not documented.
+## 1. المبادئ (غير قابلة للتفاوض)
+
+**Before writing any Kubernetes manifest or Helm chart, follow THIS file as the only authoritative source.**
 
 | Reality | Rule |
 |---------|------|
@@ -19,158 +22,200 @@ The infrastructure documentation is the **authoritative source**. Never assume a
 | لا استبدال | **Never replace** existing infrastructure |
 | لا مكوّنات متنافسة | **Never install competing components** |
 
-**ممنوع** اقتراح أو تنفيذ: Ingress controller جديد، StorageClass جديد، cert-manager بديل، CNI بديل، Service mesh، cloud LoadBalancer، أو أي مكوّن يتعارض مع ما في `README.md`.
+**Never assume** values not defined in this file. If something is missing (hostname, namespace name, replica count), **ask the user** — do not guess.
 
 ---
 
-## المبدأ الأساسي (غير قابل للتفاوض)
+## 2. مواصفات Cluster (Platform Spec)
 
-**Kubernetes Cluster هو Single Source of Truth.** أي مشروع Helm جديد يلتزم بالبنية الموجودة — وليس العكس.
-
-لا تُعدّل إعدادات الـ cluster (Ingress controller، StorageClass، cert-manager، NetworkPolicy العامة) لتناسب مشروعاً. عدّل المشروع ليتوافق مع ما هو موثّق ومنشور.
-
----
-
-## المصادر الرسمية الوحيدة (Authoritative Sources)
-
-قبل أي قرار معماري أو توليد Helm chart/values، **اقرأ واستشهد** من هذه الملفات فقط. **ممنوع** افتراض إعدادات غير موثقة.
-
-| الأولوية | الملف | الغرض |
-|----------|-------|-------|
-| 1 | `README.md` | بنية Cluster، RKE2، HAProxy، Longhorn، cert-manager، Rancher |
-| 2 | `OPERATIONS.md` | Day-2 ops، backup، troubleshooting، thresholds |
-| 3 | `OBSERVABILITY.md` | Monitoring stack |
-| 4 | `DOCKER-COMPOSE-TO-HELM.md` | منهجية تحويل Compose → Helm |
-| 5 | `{project}/DEPLOYMENT.md` | خطوات نشر مشروع محدد |
-| 6 | `{project}/OPERATIONS.md` | تشغيل واستكشاف أخطاء مشروع محدد |
-| 7 | `bot-project/helm/bot-platform/` | مرجع chart كامل (umbrella) |
-| 8 | `n8n-deploy/helm/` | مرجع chart + official subchart pattern |
-
-**إذا لم يُذكر شيء في التوثيق:** توقّف، اسأل المستخدم، أو اطلب تحديث التوثيق. **لا تخترع** IngressClass، StorageClass، Issuer، namespace، أو replica counts.
-
----
-
-## مواصفات Cluster الإلزامية
-
-هذه القيم **ثابتة** ما لم يُحدّث `README.md` صراحة:
-
-| المكوّن | القيمة الموثّقة | المرجع |
-|---------|----------------|--------|
-| Kubernetes | RKE2 `v1.30.10+rke2r1` | README §1, §8 |
-| Ingress Controller | `rke2-ingress-nginx` (مُدمج مع RKE2) | README §9 |
-| IngressClass | **`nginx`** | README §9.3 |
-| TLS | cert-manager `v1.14.5` | README §12 |
-| ClusterIssuer | **`letsencrypt-prod`** (HTTP-01) | README §12.2 |
-| StorageClass الافتراضي | **`longhorn`** | README §11.2 |
-| Longhorn replicas (Phase 1) | `defaultReplicaCount=2` | README §11.1 |
-| CNI | Canal + VXLAN (UDP 8472) | README §5.3 |
-| Private network | `10.0.0.0/24` | README §4 |
-| HAProxy | يوجّه 80/443 → Ingress على العقد | README §7 |
-| Timezone | `Asia/Aden` | bot-platform, n8n values |
-
-### ممنوعات صريحة
-
-- ❌ تثبيت `ingress-nginx` community chart — يتعارض مع `rke2-ingress-nginx`
-- ❌ استخدام `LoadBalancer` Service type — لا يوجد cloud LB موثّق
-- ❌ `hostNetwork: true` للتطبيقات — Ingress يستخدمه بالفعل
-- ❌ StorageClass غير `longhorn` إلا إذا وُثّق استثناء
-- ❌ صور `docker.io/bitnami/*` — أُزيلت من Docker Hub (2025)
-- ❌ أسرار أو كلمات مرور في `values.yaml` أو git
-- ❌ namespace `default` للإنتاج
-- ❌ `pod-security.kubernetes.io/enforce=restricted` على namespaces تطبيقات — استخدم `audit` + `warn` فقط (README §15.4)
-
----
-
-## هيكل Helm Chart الإلزامي
-
-كل مشروع جديد يتبع هذا الهيكل (انظر `bot-platform` و `n8n-platform`):
+### 2.1 Architecture (Phase 1)
 
 ```text
-{project}/helm/{chart-name}/
+Internet → HAProxy (public IP) → ports 80/443/6443/9345
+              ↓
+    k8s-master-01 (10.0.0.2) — RKE2 server, etcd, Rancher, control plane
+    k8s-worker-01 (10.0.0.3) — RKE2 agent, Longhorn, application workloads
+Private network: 10.0.0.0/24
+```
+
+| Component | Value |
+|-----------|-------|
+| Kubernetes | RKE2 `v1.30.10+rke2r1` |
+| Load Balancer | HAProxy — forwards 80/443 to Ingress on nodes |
+| Ingress Controller | `rke2-ingress-nginx` (bundled with RKE2, **do NOT install another**) |
+| IngressClass | **`nginx`** (default) |
+| Ingress namespace | **`kube-system`** (NOT `ingress-nginx`) |
+| TLS | cert-manager `v1.14.5` |
+| ClusterIssuer | **`letsencrypt-prod`** — ACME HTTP-01, solver class `nginx` |
+| StorageClass | **`longhorn`** (default) |
+| Longhorn replicas | **`2`** (Phase 1 — 2 nodes) |
+| CNI | Canal + VXLAN (UDP 8472) |
+| Management | Rancher `2.9.3` in `cattle-system` |
+| Default timezone | `Asia/Aden` |
+
+### 2.2 Traffic Flow
+
+1. External traffic → HAProxy public IP
+2. HTTP/HTTPS (80/443) → Nginx Ingress on master + worker nodes
+3. Ingress routes by host/path to ClusterIP Services
+4. cert-manager issues TLS via Let's Encrypt HTTP-01 (port 80 **must** be open)
+5. DNS A record for app hostname → HAProxy public IP
+
+### 2.3 Node Scheduling
+
+- **Application workloads → worker node** (`k8s-worker-01`)
+- Master runs control plane, etcd, Rancher — avoid heavy app pods on master
+
+```yaml
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: DoesNotExist
+```
+
+### 2.4 ممنوعات صريحة
+
+- ❌ Community `ingress-nginx` Helm chart
+- ❌ `LoadBalancer` Service type (no cloud LB)
+- ❌ `hostNetwork: true` on application pods (ingress controller uses it, not apps)
+- ❌ StorageClass other than `longhorn`
+- ❌ `docker.io/bitnami/*` images (removed from Docker Hub)
+- ❌ Secrets/passwords in `values.yaml` or git
+- ❌ `default` namespace for production
+- ❌ Service mesh, alternative CNI, alternative cert-manager
+- ❌ `pod-security.kubernetes.io/enforce=restricted` on app namespaces (use `audit` + `warn` only)
+
+---
+
+## 3. هيكل Helm Chart
+
+```text
+helm/{chart-name}/
 ├── Chart.yaml
-├── values.yaml                    # defaults — بدون أسرار
-├── values-production.example.yaml # مثال — ينسخه المشغّل
-├── values-ci.yaml                 # قيم وهمية لـ lint/template
+├── values.yaml
+├── values-production.example.yaml
+├── values-production.yaml          # gitignored
+├── values-ci.yaml
 ├── .helmignore
-├── README.md                      # يربط بـ DEPLOYMENT.md
+├── README.md
 └── templates/
     ├── _helpers.tpl
-    ├── namespace.yaml             # اختياري
+    ├── namespace.yaml
+    ├── resourcequota.yaml
     ├── networkpolicy-default-deny.yaml
     ├── networkpolicy-allow-internal.yaml
     ├── networkpolicy-allow-ingress.yaml
-    ├── serviceaccount.yaml          # عند الحاجة
-    ├── hpa.yaml                     # عند الحاجة للتوسع
-    ├── pdb.yaml                     # للخدمات الحرجة
+    ├── serviceaccount.yaml
+    ├── hpa.yaml                    # if scalable
+    ├── pdb.yaml                    # if replicas ≥ 2
     └── NOTES.txt
 ```
 
----
-
-## موارد Kubernetes الإلزامية (Mandatory Resources)
-
-كل Helm chart للإنتاج **يجب** أن يغطي هذه الموارد حسب الحاجة — لا تُترك ناقصة:
-
-| Resource | متى إلزامي | ملاحظات |
-|----------|-----------|---------|
-| **Deployment** / StatefulSet | دائماً | StatefulSet لـ DB/cache مع PVC |
-| **Service** | دائماً | `ClusterIP` افتراضياً — لا `LoadBalancer` |
-| **Ingress** | خدمات معرّضة خارجياً | `className: nginx` + cert-manager |
-| **PVC** | أي stateful data | `storageClass: longhorn` |
-| **HPA** | workloads قابلة للتوسع | CPU/memory أو custom metrics |
-| **PDB** | replicas ≥ 2 أو خدمات حرجة | `minAvailable: 1` على الأقل |
-| **NetworkPolicy** | **دائماً** | default-deny + allow-internal + allow-ingress |
-| **ServiceAccount** | عند RBAC أو pull policies | `templates/serviceaccount.yaml` |
-| **RBAC** | Role/RoleBinding عند least-privilege | لا cluster-admin للتطبيق |
-| **Secret** | credentials, TLS keys, config حساس | خارج git — `existingSecret` |
-| **ConfigMap** | إعدادات غير حساسة فقط | لا passwords ولا API keys |
-| **README.md** | **دائماً** | يربط بـ DEPLOYMENT.md |
-| **NOTES.txt** | **دائماً** | post-install instructions |
-| **values.yaml** | **دائماً** | defaults بدون أسرار |
-
-> ConfigMap للإعدادات العامة. Secret لأي بيانات حساسة. لا تخلط بينهما.
-
 ### Chart.yaml
 
-- `apiVersion: v2`
-- `type: application` (أو `application` umbrella مع `dependencies`)
-- `version` semver للـ chart، `appVersion` لإصدار التطبيق
+```yaml
+apiVersion: v2
+name: <chart-name>
+description: <app description>
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+```
 
-### ملفات Values
+### Values Files
 
-| الملف | الغرض | Git |
-|-------|-------|-----|
-| `values.yaml` | defaults عامة، flags، resources | ✅ |
-| `values-production.example.yaml` | مثال بحقول فارغة/placeholder | ✅ |
-| `values-production.yaml` | أسرار وإنتاج فعلي | ❌ `.gitignore` |
-| `values-ci.yaml` | lint/template محلي | ✅ |
+| File | Purpose | Git |
+|------|---------|-----|
+| `values.yaml` | Defaults, no secrets | ✅ |
+| `values-production.example.yaml` | Template with empty placeholders | ✅ |
+| `values-production.yaml` | Production secrets | ❌ |
+| `values-ci.yaml` | Fake values for `helm lint` / `helm template` | ✅ |
 
-**النشر دائماً:**
+### Install / Upgrade
 
 ```bash
-helm install <release> ./helm/<chart> \
+helm upgrade --install <release> ./helm/<chart> \
   -n <namespace> \
+  --create-namespace \
   -f values.yaml \
-  -f values-production.yaml
+  -f values-production.yaml \
+  --atomic --wait --timeout 10m
 ```
 
 ---
 
-## `global` Block — القيم المشتركة
+## 4. Mandatory Kubernetes Resources
+
+| Resource | When Required |
+|----------|---------------|
+| **Deployment** / **StatefulSet** | Always — StatefulSet for DB/cache with PVC |
+| **Service** | Always — `ClusterIP` only |
+| **Ingress** | External-facing services — `className: nginx` |
+| **PVC** | Stateful data — `storageClass: longhorn` |
+| **NetworkPolicy** | **Always** — 3 policies (see §7) |
+| **ServiceAccount** | Always — dedicated SA, not `default` |
+| **Secret** | Credentials — pre-created, `existingSecret` in values |
+| **ConfigMap** | Non-sensitive config only |
+| **ResourceQuota** | Per app namespace |
+| **HPA** | Stateless scalable workloads |
+| **PDB** | When `replicas ≥ 2` only (never with replicas=1) |
+| **RBAC** | Role/RoleBinding when app needs K8s API access |
+| **README.md** + **NOTES.txt** + **values.yaml** | Always |
+
+---
+
+## 5. global Block
 
 ```yaml
 global:
   storageClass: longhorn
   timezone: Asia/Aden
-  hostname: <app>.yourdomain.com      # DNS → HAProxy public IP
+  hostname: <app>.yourdomain.com
   clusterIssuer: letsencrypt-prod
   ingressClassName: nginx
-  imagePullSecrets: []                  # harbor-registry عند الحاجة
+  imagePullSecrets: []    # e.g. [{ name: registry-secret }]
 ```
 
 ---
 
-## Ingress و TLS (إلزامي للخدمات المعروضة)
+## 6. Namespace Setup
+
+```bash
+kubectl create namespace <app> --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl label namespace <app> \
+  pod-security.kubernetes.io/audit=restricted \
+  pod-security.kubernetes.io/warn=restricted --overwrite
+```
+
+### ResourceQuota (per namespace)
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: <app>-quota
+  namespace: <app>
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "50"
+    persistentvolumeclaims: "20"
+    services: "20"
+```
+
+Adjust limits per application. Every pod **must** have `resources.requests` or scheduling fails under quota.
+
+---
+
+## 7. Ingress & TLS
 
 ```yaml
 ingress:
@@ -179,83 +224,125 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: <app>.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
   tls:
     - hosts:
-        - <hostname>
+        - <app>.yourdomain.com
       secretName: <app>-tls
 ```
 
-**قبل التثبيت:** DNS A record يشير إلى HAProxy public IP، و port 80 مفتوح (Let's Encrypt HTTP-01).
+**Pre-requisites:** DNS A record → HAProxy IP, port 80 open through HAProxy.
 
 ---
 
-## Network Policies (إلزامي لكل namespace تطبيق)
+## 8. Network Policies (Always — 3 policies)
 
-ثلاث سياسات على الأقل — كما في `n8n-platform/templates/`:
-
-1. **default-deny-ingress** — `podSelector: {}`, `policyTypes: [Ingress]`
-2. **allow-internal** — ingress من نفس namespace
-3. **allow-ingress** — ingress من `kube-system` (RKE2 ingress controller)
-
-> **تحذير:** لا تقيّد منفذ ingress controller فقط (مثل 5678). cert-manager ACME solver يستخدم منافذ عشوائية (~8089). اسمح لـ `kube-system` على **كل المنافذ** — كما في `networkpolicy-allow-ingress.yaml`.
+### 8.1 default-deny-ingress
 
 ```yaml
-networkPolicy:
-  enabled: true
-  allowIngressFromNamespaces:
-    - kube-system
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
 ```
+
+### 8.2 allow-internal
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internal
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: <app-namespace>
+```
+
+### 8.3 allow-ingress (from RKE2 ingress controller)
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+```
+
+> **CRITICAL:** Allow `kube-system` on **ALL ports** — not just app port.
+> cert-manager ACME HTTP-01 solver uses random ports (~8089).
+> Restricting to port 5678 (or similar) breaks TLS certificate issuance.
 
 ---
 
-## Namespace و Pod Security
-
-```bash
-kubectl create namespace <app> --dry-run=client -o yaml | kubectl apply -f -
-kubectl label namespace <app> \
-  pod-security.kubernetes.io/audit=restricted \
-  pod-security.kubernetes.io/warn=restricted --overwrite
-```
-
-- namespace مخصص لكل تطبيق (`n8n`, `bot-platform`, …)
-- **لا** `enforce=restricted` إلا إذا تحققت كل workloads من compliance
-
----
-
-## التخزين (Longhorn)
+## 9. Storage (Longhorn)
 
 ```yaml
 persistence:
   enabled: true
-  storageClass: longhorn   # أو عبر global.storageClass
+  storageClass: longhorn
   accessModes:
-    - ReadWriteOnce          # الافتراضي
-  size: 10Gi                 # حدّد حسب الحاجة
+    - ReadWriteOnce
+  size: 10Gi
+  annotations:
+    recurring-job.longhorn.io/default: enabled   # daily backup at 02:00, retain 7
 ```
 
-- RWO للبيانات stateful (PostgreSQL, Redis, app data)
-- RWX فقط عند الحاجة الفعلية (مثل static/media مشتركة — انظر bot-platform)
-- **لا PVC** لـ pods stateless في queue mode (n8n workers)
+| Rule | Detail |
+|------|--------|
+| Default access mode | `ReadWriteOnce` |
+| RWX | Only when multiple pods need shared storage |
+| StatefulSet + RWO | Use `strategy: Recreate` (not RollingUpdate) to avoid Multi-Attach errors |
+| Stateless pods | No PVC (e.g. queue workers with external DB) |
+| Replicas | Longhorn volumes replicate ×2 across nodes — plan disk capacity |
 
 ---
 
-## الأسرار (Secrets)
+## 10. Secrets
 
-- أنشئ Secrets **قبل** `helm install` (kubectl أو script مثل `scripts/secrets.example.sh`)
-- استخدم `existingSecret` في values بدل inline passwords
-- Registry pull: `kubectl create secret docker-registry harbor-registry ...`
-- حساسة (config.js, API keys) → Secret وليس ConfigMap
-- **ممنوع:** `--set password=plaintext` في shell history للإنتاج
+- Create Secrets **before** `helm install` via kubectl or script
+- Reference via `existingSecret` in values — never inline passwords
+- Sensitive files (config.js, API keys) → **Secret**, not ConfigMap
+- Private registry:
+
+```bash
+kubectl create secret docker-registry registry-secret \
+  -n <namespace> \
+  --docker-server=<registry> \
+  --docker-username=<user> \
+  --docker-password=<pass>
+```
+
+- **Forbidden:** plaintext passwords in git, `values.yaml`, or shell history
 
 ---
 
-## Security Context (Pod Security restricted-ready — إلزامي)
-
-كل container **يجب** أن يلتزم بـ Pod Security `restricted` profile قدر الإمكان:
+## 11. Security Context (Every Container)
 
 ```yaml
 # Pod-level
-securityContext:
+podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
   runAsGroup: 1000
@@ -264,35 +351,31 @@ securityContext:
     type: RuntimeDefault
 
 # Container-level — MUST on every container
-containerSecurityContext:
+securityContext:
   runAsNonRoot: true
-  runAsUser: 1000
-  runAsGroup: 1000
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
   capabilities:
-    drop:
-      - ALL
+    drop: [ALL]
 ```
 
-| Requirement | Rule |
-|-------------|------|
-| `runAsNonRoot` | **MUST** — container + pod level |
-| `readOnlyRootFilesystem` | **MUST** — استخدم `emptyDir` للـ `/tmp` ومسارات الكتابة |
-| `allowPrivilegeEscalation` | **MUST** `false` |
-| `capabilities` | **MUST** `drop: [ALL]` — لا `add` إلا إذا وُثّق استثناء |
-| `privileged` | **FORBIDDEN** |
+| Field | Rule |
+|-------|------|
+| `runAsNonRoot` | MUST |
+| `readOnlyRootFilesystem` | MUST — use `emptyDir` for `/tmp` and writable paths |
+| `allowPrivilegeEscalation` | MUST `false` |
+| `capabilities.drop` | MUST `[ALL]` |
+| `privileged` | FORBIDDEN |
 
-**استثناء `readOnlyRootFilesystem`:** DB images (postgres, redis) قد تحتاج `false` — وثّق السبب في template comment. باقي التطبيقات: `true`.
+**DB exception:** postgres/redis may need `readOnlyRootFilesystem: false`.
 
-- `enableServiceLinks: false` عند تعارض أسماء Services مع env vars (`db`, `redis` — انظر bot-platform troubleshooting)
-- initContainers لـ `wait-for-deps`, migrations, `chown` للـ volumes
+**Service name collision:** if Service is named `db` or `redis`, set `enableServiceLinks: false` on pod spec (K8s injects `DB_PORT=tcp://...` env vars).
+
+**Init containers:** `wait-for-deps`, DB migrations, `chown` for volume permissions.
 
 ---
 
-## Resources و Probes (إلزامي — لا pod بدونها)
-
-**Every Deployment/StatefulSet MUST define `resources` and `probes`.** لا pod للإنتاج بدون requests/limits و health checks.
+## 12. Resources & Probes (Every Pod)
 
 ```yaml
 resources:
@@ -302,24 +385,24 @@ resources:
   limits:
     cpu: "1"
     memory: 1Gi
+```
 
+### Application (HTTP)
+
+```yaml
 livenessProbe:
   httpGet:
     path: /health
     port: http
   initialDelaySeconds: 60
   periodSeconds: 10
-  failureThreshold: 3
-
 readinessProbe:
   httpGet:
     path: /health
     port: http
   initialDelaySeconds: 30
   periodSeconds: 5
-  failureThreshold: 3
-
-startupProbe:          # للتطبيقات بطيئة البدء
+startupProbe:              # if boot > 60s
   httpGet:
     path: /health
     port: http
@@ -327,164 +410,210 @@ startupProbe:          # للتطبيقات بطيئة البدء
   periodSeconds: 10
 ```
 
-| Field | Rule |
-|-------|------|
-| `resources.requests` | **MUST** — للـ scheduling و ResourceQuota |
-| `resources.limits` | **MUST** — لمنع resource exhaustion |
-| `livenessProbe` | **MUST** — HTTP/TCP/exec حسب التطبيق |
-| `readinessProbe` | **MUST** — قبل قبول traffic |
-| `startupProbe` | عند boot > 60s |
-
-- Cluster يفرض ResourceQuota (README §15.3) — pods بدون requests قد لا تُجدول
-
----
-
-## الصور (Images)
-
-| النوع | المصدر |
-|-------|--------|
-| PostgreSQL | `postgres:<version>-alpine` |
-| Redis | `redis:<version>-alpine` |
-| تطبيقات خاصة | `harbor.fintechsys.net/...` |
-| Charts رسمية | OCI/subchart (مثل n8n من `ghcr.io/n8n-io/n8n-helm-chart`) |
-
-**لا Bitnami.** استخدم templates مخصصة أو charts رسمية.
-
----
-
-## أنماط النشر المعتمدة
-
-### Pattern A — Umbrella chart واحد
-مثال: `bot-platform` — كل الخدمات في release واحد، flags `*.enabled`.
-
-### Pattern B — Releases متعددة + official chart
-مثال: `n8n-deploy` — `n8n-data` (PostgreSQL/Redis) ثم `n8n` (official chart).
-
-**قاعدة:** ثبّت dependencies (DB, cache) **قبل** التطبيق.
-
----
-
-## Pre-Deploy Checklist (إلزامي)
-
-```bash
-kubectl get nodes                                    # Ready
-kubectl get ingressclass                             # nginx (default)
-kubectl get clusterissuer letsencrypt-prod           # Ready
-kubectl get storageclass longhorn                    # (default)
-kubectl get pods -n longhorn-system                  # Running
-kubectl get pods -n cert-manager                     # Running
-nslookup <hostname>                                  # → HAProxy IP
-helm lint . -f values.yaml -f values-ci.yaml
-helm template <release> . -n <ns> -f values.yaml -f values-ci.yaml
-```
-
----
-
-## Post-Deploy Validation
-
-```bash
-kubectl get pods,svc,ingress,pvc,certificate -n <namespace>
-curl -I https://<hostname>/health   # أو endpoint التطبيق
-helm get values <release> -n <namespace> > backup-values.yaml
-```
-
----
-
-## Upgrade و Rollback
-
-```bash
-# قبل أي upgrade — etcd snapshot (OPERATIONS.md)
-rke2 etcd-snapshot save --name pre-<app>-upgrade-$(date +%Y%m%d)
-
-helm upgrade <release> ./helm/<chart> -n <ns> \
-  -f values.yaml -f values-production.yaml
-
-# rollback
-helm history <release> -n <ns>
-helm rollback <release> <revision> -n <ns>
-```
-
----
-
-## HPA و PDB
+### PostgreSQL
 
 ```yaml
-# HPA — عند replicas قابلة للتوسع
+livenessProbe:
+  exec:
+    command: ["pg_isready", "-U", "<user>"]
+  initialDelaySeconds: 30
+readinessProbe:
+  exec:
+    command: ["pg_isready", "-U", "<user>"]
+  initialDelaySeconds: 5
+```
+
+### Redis
+
+```yaml
+livenessProbe:
+  exec:
+    command: ["redis-cli", "ping"]
+readinessProbe:
+  exec:
+    command: ["redis-cli", "ping"]
+```
+
+| Field | Rule |
+|-------|------|
+| `resources.requests` | MUST |
+| `resources.limits` | MUST |
+| `livenessProbe` | MUST |
+| `readinessProbe` | MUST |
+
+---
+
+## 13. Images
+
+| Type | Source |
+|------|--------|
+| PostgreSQL | `postgres:<semver>-alpine` — pin exact version |
+| Redis | `redis:<semver>-alpine` — pin exact version |
+| App images | Private registry or official upstream |
+| Official charts | OCI/subchart from vendor |
+
+- **Pin semver tags** — never `:latest` or `:stable` in production
+- **No Bitnami** — use official images with custom templates
+
+---
+
+## 14. Deployment Patterns
+
+### Pattern A — Single umbrella chart
+
+One Helm release, all services, toggled via `*.enabled` flags.
+
+```yaml
+postgresql:
+  enabled: true
+redis:
+  enabled: true
+app:
+  enabled: true
+```
+
+### Pattern B — Multiple releases
+
+Release 1: data layer (PostgreSQL, Redis, NetworkPolicy).
+Release 2: application (official vendor chart + values overlay).
+
+**Rule:** Install DB/cache **before** application. Wait for pods Ready.
+
+---
+
+## 15. HPA & PDB
+
+```yaml
+# HPA — stateless Deployments only (requires metrics-server)
 autoscaling:
   enabled: true
   minReplicas: 2
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
 
-# PDB — عند replicas ≥ 2
+# PDB — ONLY when replicas ≥ 2
 pdb:
   enabled: true
   minAvailable: 1
 ```
 
-- **HPA:** للـ Deployments stateless (workers, API) — ليس لـ StatefulSet DB
-- **PDB:** إلزامي عند `replicas ≥ 2` أو خدمة حرجة — يمنع voluntary disruption كامل
+- No HPA on StatefulSet DB
+- No PDB when `replicas: 1` (invalid)
 
 ---
 
-## ServiceAccount و RBAC
+## 16. ServiceAccount & RBAC
 
 ```yaml
 serviceAccount:
   create: true
-  name: ""
-  annotations: {}
 
 rbac:
-  create: false          # true فقط عند حاجة فعلية
-  rules: []              # least privilege — namespace-scoped Role
+  create: false    # true only when app needs K8s API
+  rules: []        # namespace-scoped Role, least privilege
 ```
 
-- ServiceAccount لكل chart — لا `default` SA للإنتاج
-- RBAC: Role + RoleBinding في namespace التطبيق — **لا** ClusterRole إلا إذا وُثّق
-- لا cluster-admin، لا wildcard verbs
+- Dedicated ServiceAccount per chart
+- No `cluster-admin`, no wildcard verbs
 
 ---
 
-## سلوك Cursor Agent
-
-1. **Inspect documentation FIRST** — قبل أي manifest أو Helm chart، اقرأ كل توثيق البنية التحتية
-2. **Never assume** — إذا لم يُذكر في التوثيق، اسأل — لا تخمّن
-3. **Platform is deployed** — لا redesign، لا replace، لا competing components
-4. **انسخ الأنماط** من `bot-platform` أو `n8n-platform` — لا reinvent
-5. **Mandatory resources** — Deployment, Service, NetworkPolicy, probes, resources, securityContext — لا chart ناقص
-6. **لا تفترض cloud provider features** — cluster on-prem Contabo + HAProxy
-7. **اسأل** عند غموض: hostname، namespace، resource limits، replica count
-8. **وثّق** أي قرار جديد في `{project}/DEPLOYMENT.md` قبل تنفيذه
-
----
-
-## مراجع سريعة للقيم
+## 17. Standard Labels
 
 ```yaml
-# Ingress — MUST
-ingress.className: nginx
-cert-manager.io/cluster-issuer: letsencrypt-prod
+labels:
+  app.kubernetes.io/name: {{ .Chart.Name }}
+  app.kubernetes.io/instance: {{ .Release.Name }}
+  app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+  app.kubernetes.io/managed-by: {{ .Release.Service }}
+  app.kubernetes.io/component: api   # api | worker | db | cache
+```
 
-# Storage — MUST
+---
+
+## 18. Pre-Deploy Checklist
+
+```bash
+kubectl get nodes                                          # Ready
+kubectl get ingressclass                                   # nginx (default)
+kubectl get clusterissuer letsencrypt-prod                 # Ready
+kubectl get storageclass longhorn                          # (default)
+kubectl get pods -n longhorn-system                        # Running
+kubectl get pods -n cert-manager                           # Running
+kubectl get pods -n kube-system -l app.kubernetes.io/name=rke2-ingress-nginx  # Running
+nslookup <hostname>                                        # → HAProxy IP
+helm lint . -f values.yaml -f values-ci.yaml
+helm template <release> . -n <ns> -f values.yaml -f values-ci.yaml
+```
+
+---
+
+## 19. Post-Deploy Validation
+
+```bash
+kubectl get pods,svc,ingress,pvc,certificate -n <namespace>
+curl -I https://<hostname>/health
+helm get values <release> -n <namespace> > backup-values.yaml
+```
+
+---
+
+## 20. Upgrade & Rollback
+
+```bash
+# Snapshot etcd before cluster-level changes (on master node)
+rke2 etcd-snapshot save --name pre-<app>-upgrade-$(date +%Y%m%d)
+
+helm upgrade --install <release> ./helm/<chart> \
+  -n <namespace> \
+  -f values.yaml \
+  -f values-production.yaml \
+  --atomic --wait --timeout 10m
+
+helm history <release> -n <namespace>
+helm rollback <release> <revision> -n <namespace>
+```
+
+---
+
+## 21. Cursor Agent Rules
+
+1. **This file is the only source** — no external docs required
+2. **Platform is deployed** — adapt the app, never redesign infrastructure
+3. **Never assume** undocumented values — ask the user
+4. **Every chart must include:** Deployment/StatefulSet, Service, NetworkPolicy (×3), probes, resources, securityContext
+5. **No cloud features** — on-prem Contabo VPS + HAProxy, no LoadBalancer
+6. **Pin image tags** — semver only
+7. **Schedule on worker** — avoid control-plane node for app workloads
+8. **Install order:** namespace → secrets → data layer → app layer → verify TLS
+
+---
+
+## 22. Quick Reference
+
+```yaml
+# Platform — MUST
+ingressClassName: nginx
+clusterIssuer: letsencrypt-prod
 storageClass: longhorn
+ingress.namespace: kube-system          # for NetworkPolicy allow-ingress
 
-# NetworkPolicy — MUST allow
-allowIngressFromNamespaces: [kube-system]
-
-# Namespace PSS — MUST (apps)
+# Namespace — MUST
 pod-security.kubernetes.io/audit: restricted
 pod-security.kubernetes.io/warn: restricted
 
-# Security Context — MUST (every container)
+# Security — MUST (every container)
 runAsNonRoot: true
 readOnlyRootFilesystem: true
 allowPrivilegeEscalation: false
 capabilities.drop: [ALL]
 
-# Resources & Probes — MUST (every pod)
+# Every pod — MUST
 resources.requests: { cpu, memory }
 resources.limits: { cpu, memory }
 livenessProbe: required
 readinessProbe: required
+
+# Longhorn PVC — SHOULD
+recurring-job.longhorn.io/default: enabled
 ```
